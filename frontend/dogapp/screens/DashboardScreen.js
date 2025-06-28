@@ -9,12 +9,14 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { useAuth } from '../contexts/AuthContext';
+import DogService from '../services/DogService';
 
 const { width } = Dimensions.get('window');
 
 export default function DashboardScreen({ navigation }) {
+  const { currentUser, logout } = useAuth();
   const [dogs, setDogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showMainMenu, setShowMainMenu] = useState(false);
@@ -32,12 +34,17 @@ export default function DashboardScreen({ navigation }) {
 
   const loadDogs = async () => {
     try {
-      const storedDogs = await AsyncStorage.getItem('dogs');
-      if (storedDogs) {
-        setDogs(JSON.parse(storedDogs));
+      setLoading(true);
+      const result = await DogService.getDogs();
+      
+      if (result.success) {
+        setDogs(result.dogs);
+      } else {
+        Alert.alert('Error', result.error || 'Failed to load dogs');
       }
     } catch (error) {
       console.error('Error loading dogs:', error);
+      Alert.alert('Error', 'Failed to load dogs. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -54,11 +61,18 @@ export default function DashboardScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const updatedDogs = dogs.filter(dog => dog.id !== dogId);
-              setDogs(updatedDogs);
-              await AsyncStorage.setItem('dogs', JSON.stringify(updatedDogs));
+              const result = await DogService.deleteDog(dogId);
+              
+              if (result.success) {
+                // Remove from local state
+                setDogs(dogs.filter(dog => dog.id !== dogId));
+                Alert.alert('Success', 'Dog profile deleted successfully');
+              } else {
+                Alert.alert('Error', result.error || 'Failed to delete dog');
+              }
             } catch (error) {
               console.error('Error deleting dog:', error);
+              Alert.alert('Error', 'Failed to delete dog. Please try again.');
             }
           },
         },
@@ -75,9 +89,15 @@ export default function DashboardScreen({ navigation }) {
         {
           text: 'Logout',
           style: 'destructive',
-          onPress: () => {
-            setShowMainMenu(false);
-            navigation.navigate('Login');
+          onPress: async () => {
+            try {
+              setShowMainMenu(false);
+              await logout();
+              // Navigation will happen automatically due to auth state change
+            } catch (error) {
+              console.error('Logout error:', error);
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
           },
         },
       ]
@@ -122,6 +142,7 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.headerLeft}>
               <Text style={styles.welcomeText}>Welcome to your pack! 🎾</Text>
               <Text style={styles.subText}>
+                {currentUser?.email && `${currentUser.email} • `}
                 {dogs.length === 0 
                   ? "You haven't added any dogs yet" 
                   : `You have ${dogs.length} furry friend${dogs.length > 1 ? 's' : ''}`
@@ -137,7 +158,11 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
-        {dogs.length === 0 ? (
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>🐕 Loading your pack...</Text>
+          </View>
+        ) : dogs.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyEmoji}>🐕‍🦺</Text>
             <Text style={styles.emptyTitle}>No Dogs Yet</Text>
@@ -274,6 +299,19 @@ const styles = StyleSheet.create({
   menuText: {
     color: '#FFFFFF',
     fontSize: 24,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    marginTop: 60,
+  },
+  loadingText: {
+    fontSize: 18,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 24,
   },
   emptyState: {
     flex: 1,

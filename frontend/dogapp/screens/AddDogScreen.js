@@ -9,7 +9,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import DogService from '../services/DogService';
 
 export default function AddDogScreen({ navigation }) {
   const [dogData, setDogData] = useState({
@@ -23,6 +23,7 @@ export default function AddDogScreen({ navigation }) {
     favoriteActivities: '',
     specialNeeds: '',
   });
+  const [loading, setLoading] = useState(false);
 
   const dogEmojis = ['🐕', '🐶', '🦮', '🐕‍🦺', '🐩', '🐾'];
 
@@ -33,37 +34,44 @@ export default function AddDogScreen({ navigation }) {
       return;
     }
 
+    setLoading(true);
     try {
-      // Load existing dogs
-      const existingDogs = await AsyncStorage.getItem('dogs');
-      const dogs = existingDogs ? JSON.parse(existingDogs) : [];
-
-      // Create new dog with unique ID
-      const newDog = {
-        ...dogData,
-        id: Date.now().toString(),
-        createdAt: new Date().toISOString(),
+      // Prepare data for API
+      const dogPayload = {
+        name: dogData.name.trim(),
+        breed: dogData.breed.trim(),
+        age: parseInt(dogData.age),
+        emoji: dogData.emoji,
+        notes: [
+          dogData.color ? `Color: ${dogData.color}` : '',
+          dogData.gender ? `Gender: ${dogData.gender}` : '',
+          dogData.favoriteActivities ? `Favorite Activities: ${dogData.favoriteActivities}` : '',
+          dogData.medicalNotes ? `Medical Notes: ${dogData.medicalNotes}` : '',
+          dogData.specialNeeds ? `Special Needs: ${dogData.specialNeeds}` : '',
+        ].filter(note => note).join('\n'),
       };
 
-      // Add to dogs array
-      const updatedDogs = [...dogs, newDog];
+      const result = await DogService.addDog(dogPayload);
 
-      // Save to storage
-      await AsyncStorage.setItem('dogs', JSON.stringify(updatedDogs));
-
-      Alert.alert(
-        'Success! 🎉',
-        `${dogData.name} has been added to your pack!`,
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
-      );
+      if (result.success) {
+        Alert.alert(
+          'Success! 🎉',
+          `${dogData.name} has been added to your pack!`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to add dog. Please try again.');
+      }
     } catch (error) {
       console.error('Error saving dog:', error);
       Alert.alert('Error', 'Failed to save dog profile. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -209,8 +217,14 @@ export default function AddDogScreen({ navigation }) {
       </ScrollView>
 
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveButtonText}>🐾 Add to My Pack!</Text>
+        <TouchableOpacity 
+          style={[styles.saveButton, loading && styles.disabledButton]} 
+          onPress={handleSave}
+          disabled={loading}
+        >
+          <Text style={styles.saveButtonText}>
+            {loading ? '🐾 Adding to Pack...' : '🐾 Add to My Pack!'}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -352,5 +366,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  disabledButton: {
+    backgroundColor: '#FF6B6B',
+    opacity: 0.7,
   },
 });

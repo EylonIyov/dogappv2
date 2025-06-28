@@ -1,16 +1,64 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Alert } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginScreen({ navigation }) {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { login, register } = useAuth();
 
-  const handleLogin = () => {
-    // Simple validation - in a real app, you'd validate against a server
-    if (username.trim() && password.trim()) {
-      navigation.navigate('Dashboard');
-    } else {
-      alert('Please enter both username and password');
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please enter both email and password');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await login(email, password);
+      
+      if (result.success) {
+        console.log('User logged in successfully');
+        // Navigation will happen automatically due to auth state change
+      } else {
+        Alert.alert('Login Error', result.error);
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      Alert.alert('Login Error', 'An unexpected error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignUp = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please enter both email and password');
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await register(email, password);
+      
+      if (result.success) {
+        console.log('User registered successfully');
+        Alert.alert('Success', 'Account created successfully!');
+        // Navigation will happen automatically due to auth state change
+      } else {
+        Alert.alert('Sign Up Error', result.error);
+      }
+    } catch (error) {
+      console.error('Sign up error:', error);
+      Alert.alert('Sign Up Error', 'An unexpected error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -25,13 +73,16 @@ export default function LoginScreen({ navigation }) {
         
         <View style={styles.formContainer}>
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>👤 Username</Text>
+            <Text style={styles.inputLabel}>📧 Email</Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter your username"
+              placeholder="Enter your email"
               placeholderTextColor="#A0A0A0"
-              value={username}
-              onChangeText={setUsername}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
             />
           </View>
           
@@ -47,11 +98,21 @@ export default function LoginScreen({ navigation }) {
             />
           </View>
           
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-            <Text style={styles.loginButtonText}>🐾 Let's Go!</Text>
+          <TouchableOpacity 
+            style={[styles.loginButton, isLoading && styles.disabledButton]} 
+            onPress={handleLogin}
+            disabled={isLoading}
+          >
+            <Text style={styles.loginButtonText}>
+              {isLoading ? '🐾 Logging in...' : '🐾 Let\'s Go!'}
+            </Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.secondaryButton}>
+          <TouchableOpacity 
+            style={[styles.secondaryButton, isLoading && styles.disabledButton]} 
+            onPress={handleSignUp}
+            disabled={isLoading}
+          >
             <Text style={styles.secondaryButtonText}>New to DogApp? Sign Up 🦴</Text>
           </TouchableOpacity>
         </View>
@@ -168,5 +229,8 @@ const styles = StyleSheet.create({
     color: '#E8F4FD',
     fontSize: 14,
     fontStyle: 'italic',
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
 });
