@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginScreen from './screens/LoginScreen';
+import SignupScreen from './screens/SignupScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import AddDogScreen from './screens/AddDogScreen';
 import DogProfileScreen from './screens/DogProfileScreen';
@@ -56,12 +57,19 @@ function AppNavigator() {
             />
           </>
         ) : (
-          // User is not authenticated - show login screen
-          <Stack.Screen 
-            name="Login" 
-            component={LoginScreen} 
-            options={{ headerShown: false }}
-          />
+          // User is not authenticated - show auth screens
+          <>
+            <Stack.Screen 
+              name="Login" 
+              component={LoginScreen} 
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen 
+              name="Signup" 
+              component={SignupScreen} 
+              options={{ headerShown: false }}
+            />
+          </>
         )}
       </Stack.Navigator>
       <StatusBar style="light" />

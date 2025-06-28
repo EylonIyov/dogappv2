@@ -2,31 +2,53 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Alert } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 
-export default function LoginScreen({ navigation }) {
+export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { register } = useAuth();
 
-  const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter both email and password');
+  const handleSignUp = async () => {
+    if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
     setIsLoading(true);
     try {
-      const result = await login(email, password);
+      const result = await register(email, password);
       
       if (result.success) {
-        console.log('User logged in successfully');
-        // Navigation will happen automatically due to auth state change
+        console.log('User registered successfully');
+        Alert.alert('Success', 'Account created successfully! Welcome to DogApp! 🐕', [
+          { text: 'Get Started', onPress: () => {
+            // Navigation will happen automatically due to auth state change
+          }}
+        ]);
       } else {
-        Alert.alert('Login Error', result.error);
+        Alert.alert('Sign Up Error', result.error);
       }
     } catch (error) {
-      console.error('Login error:', error);
-      Alert.alert('Login Error', 'An unexpected error occurred. Please try again.');
+      console.error('Sign up error:', error);
+      Alert.alert('Sign Up Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -36,14 +58,14 @@ export default function LoginScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.dogEmoji}>🐕</Text>
-          <Text style={styles.title}>Welcome Back!</Text>
-          <Text style={styles.subtitle}>Sign in to your DogApp account</Text>
+          <Text style={styles.dogEmoji}>🐾</Text>
+          <Text style={styles.title}>Join DogApp</Text>
+          <Text style={styles.subtitle}>Create your account to get started</Text>
         </View>
         
         <View style={styles.formContainer}>
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>📧 Email</Text>
+            <Text style={styles.inputLabel}>📧 Email Address</Text>
             <TextInput
               style={styles.input}
               placeholder="Enter your email"
@@ -61,44 +83,51 @@ export default function LoginScreen({ navigation }) {
             <Text style={styles.inputLabel}>🔒 Password</Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter your password"
+              placeholder="Create a password (min 6 characters)"
               placeholderTextColor="#A0A0A0"
               secureTextEntry
               value={password}
               onChangeText={setPassword}
-              autoComplete="password"
+              autoComplete="password-new"
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>🔒 Confirm Password</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Confirm your password"
+              placeholderTextColor="#A0A0A0"
+              secureTextEntry
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              autoComplete="password-new"
             />
           </View>
           
           <TouchableOpacity 
-            style={[styles.loginButton, isLoading && styles.disabledButton]} 
-            onPress={handleLogin}
+            style={[styles.signupButton, isLoading && styles.disabledButton]} 
+            onPress={handleSignUp}
             disabled={isLoading}
           >
-            <Text style={styles.loginButtonText}>
-              {isLoading ? '🐾 Signing In...' : '🐾 Sign In'}
+            <Text style={styles.signupButtonText}>
+              {isLoading ? '🐾 Creating Account...' : '🐾 Create Account'}
             </Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={styles.signupButton} 
-            onPress={() => navigation.navigate('Signup')}
+            style={styles.backToLoginButton} 
+            onPress={() => navigation.navigate('Login')}
             disabled={isLoading}
           >
-            <Text style={styles.signupButtonText}>New to DogApp? Create Account 🦴</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.forgotPasswordButton} 
-            onPress={() => Alert.alert('Forgot Password', 'Password reset feature coming soon!')}
-            disabled={isLoading}
-          >
-            <Text style={styles.forgotPasswordText}>Forgot Password? 🤔</Text>
+            <Text style={styles.backToLoginText}>
+              Already have an account? Sign In 🏠
+            </Text>
           </TouchableOpacity>
         </View>
         
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Made with ❤️ for dog lovers</Text>
+          <Text style={styles.footerText}>By signing up, you agree to our Terms & Privacy Policy</Text>
         </View>
       </View>
     </SafeAreaView>
@@ -108,7 +137,7 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#4A90E2',
+    backgroundColor: '#FF6B6B', // Different color from login screen
   },
   content: {
     flex: 1,
@@ -135,7 +164,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
-    color: '#E8F4FD',
+    color: '#FFE5E5',
     textAlign: 'center',
     fontStyle: 'italic',
   },
@@ -171,13 +200,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
-  loginButton: {
-    backgroundColor: '#FF6B6B',
+  signupButton: {
+    backgroundColor: '#4A90E2',
     borderRadius: 12,
     padding: 18,
     alignItems: 'center',
     marginTop: 10,
-    shadowColor: '#FF6B6B',
+    shadowColor: '#4A90E2',
     shadowOffset: {
       width: 0,
       height: 4,
@@ -186,35 +215,20 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
-  loginButtonText: {
+  signupButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
   },
-  signupButton: {
+  backToLoginButton: {
     marginTop: 15,
     padding: 12,
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 107, 107, 0.1)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#FF6B6B',
   },
-  signupButtonText: {
+  backToLoginText: {
     color: '#FF6B6B',
     fontSize: 16,
     fontWeight: '600',
-    textAlign: 'center',
-  },
-  forgotPasswordButton: {
-    marginTop: 10,
-    padding: 8,
-    alignItems: 'center',
-  },
-  forgotPasswordText: {
-    color: '#6B7280',
-    fontSize: 14,
-    fontWeight: '500',
     textAlign: 'center',
   },
   footer: {
@@ -222,8 +236,9 @@ const styles = StyleSheet.create({
     marginTop: 30,
   },
   footerText: {
-    color: '#E8F4FD',
-    fontSize: 14,
+    color: '#FFE5E5',
+    fontSize: 12,
+    textAlign: 'center',
     fontStyle: 'italic',
   },
   disabledButton: {
