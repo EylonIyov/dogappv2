@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { db, serverTimestamp } = require('./firebase-config');
 
 const app = express();
@@ -264,7 +265,7 @@ app.get('/api/dog-breeds', async (req, res) => {
     const apiKey = process.env.DOG_BREEDS_API_KEY;
     const apiUrl = process.env.DOG_BREEDS_API_URL;
     
-    if (!apiKey || apiKey === 'your-dog-breeds-api-key-here') {
+    if (!apiKey || apiKey === 'your-dog-breeds-api-key-here' || apiKey.length < 10) {
       // Return a fallback list if API key is not configured
       const fallbackBreeds = [
         'Golden Retriever', 'Labrador Retriever', 'German Shepherd', 'Bulldogs', 'Poodle',
@@ -289,7 +290,7 @@ app.get('/api/dog-breeds', async (req, res) => {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch breeds from external API');
+      throw new Error(`Failed to fetch breeds from external API - Status: ${response.status}`);
     }
 
     const breedsData = await response.json();
@@ -304,7 +305,7 @@ app.get('/api/dog-breeds', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching dog breeds:', error);
+    console.error('Error fetching dog breeds:', error.message);
     
     // Return fallback breeds on error
     const fallbackBreeds = [
