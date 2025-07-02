@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -25,7 +25,82 @@ export default function EditDogScreen({ route, navigation }) {
     specialNeeds: dog.specialNeeds || '',
   });
 
+  // Auto-complete state
+  const [allBreeds, setAllBreeds] = useState([]);
+  const [filteredBreeds, setFilteredBreeds] = useState([]);
+  const [showBreedSuggestions, setShowBreedSuggestions] = useState(false);
+  const [breedsLoading, setBreedsLoading] = useState(false);
+
+  // Refs for caching
+  const breedsCacheRef = useRef({ data: [], timestamp: null });
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
+
   const dogEmojis = ['🐕', '🐶', '🦮', '🐕‍🦺', '🐩', '🐾'];
+
+  useEffect(() => {
+    fetchBreeds();
+  }, []);
+
+  // Check if cache is valid
+  const isCacheValid = () => {
+    const { data, timestamp } = breedsCacheRef.current;
+    return data.length > 0 && timestamp && (Date.now() - timestamp < CACHE_DURATION);
+  };
+
+  const fetchBreeds = async () => {
+    try {
+      setBreedsLoading(true);
+      
+      // Check cache first
+      if (isCacheValid()) {
+        setAllBreeds(breedsCacheRef.current.data);
+        setBreedsLoading(false);
+        return;
+      }
+
+      const response = await fetch('http://localhost:3000/api/dog-breeds');
+      const data = await response.json();
+      
+      if (data.success) {
+        // Update cache
+        breedsCacheRef.current = {
+          data: data.breeds,
+          timestamp: Date.now()
+        };
+        setAllBreeds(data.breeds);
+      } else {
+        Alert.alert('Error', 'Failed to load dog breeds');
+      }
+    } catch (error) {
+      console.error('Error fetching breeds:', error);
+      Alert.alert('Error', 'Failed to load dog breeds. Please check your connection and try again.');
+    } finally {
+      setBreedsLoading(false);
+    }
+  };
+
+  const handleBreedInputChange = (text) => {
+    setDogData(prev => ({ ...prev, breed: text }));
+    
+    if (text.length >= 2) { // Only show suggestions after 2 characters
+      // Filter breeds based on input
+      const filtered = allBreeds.filter(breed =>
+        breed.toLowerCase().includes(text.toLowerCase())
+      ).slice(0, 8); // Limit to 8 suggestions for better UI
+      
+      setFilteredBreeds(filtered);
+      setShowBreedSuggestions(filtered.length > 0);
+    } else {
+      setShowBreedSuggestions(false);
+      setFilteredBreeds([]);
+    }
+  };
+
+  const selectBreed = (breed) => {
+    setDogData(prev => ({ ...prev, breed }));
+    setShowBreedSuggestions(false);
+    setFilteredBreeds([]);
+  };
 
   const handleSave = async () => {
     // Validation
@@ -116,12 +191,41 @@ export default function EditDogScreen({ route, navigation }) {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>🐕 Breed *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Golden Retriever, Mixed Breed"
-                value={dogData.breed}
-                onChangeText={(value) => updateField('breed', value)}
-              />
+              <View style={styles.breedInputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder={breedsLoading ? "Loading breeds..." : "Type your dog's breed..."}
+                  value={dogData.breed}
+                  onChangeText={handleBreedInputChange}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  editable={!breedsLoading}
+                  onFocus={() => {
+                    if (dogData.breed.length > 0) {
+                      handleBreedInputChange(dogData.breed);
+                    }
+                  }}
+                />
+                {showBreedSuggestions && filteredBreeds.length > 0 && (
+                  <View style={styles.suggestionsDropdown}>
+                    <ScrollView
+                      style={styles.suggestionsList}
+                      keyboardShouldPersistTaps="handled"
+                      nestedScrollEnabled
+                    >
+                      {filteredBreeds.map((item) => (
+                        <TouchableOpacity
+                          key={item}
+                          style={styles.suggestionItem}
+                          onPress={() => selectBreed(item)}
+                        >
+                          <Text style={styles.suggestionText}>{item}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
             </View>
 
             <View style={styles.row}>
@@ -355,5 +459,68 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  autoCompleteOverlay: {
+    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  autoCompleteContainer: {
+    width: '90%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  breedInputContainer: {
+    position: 'relative',
+    zIndex: 1,
+  },
+  suggestionsDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    borderTopWidth: 0,
+    zIndex: 1000,
+    maxHeight: 200,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  suggestionsList: {
+    maxHeight: 200,
+  },
+  suggestionItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+    backgroundColor: '#FFFFFF',
+  },
+  suggestionText: {
+    fontSize: 16,
+    color: '#333',
   },
 });

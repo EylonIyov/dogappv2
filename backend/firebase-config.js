@@ -7,18 +7,41 @@ let db;
 try {
   // Check if Firebase is already initialized
   if (!admin.apps.length) {
+    // Try to parse the service account key first
+    let serviceAccount;
+    try {
+      serviceAccount = require(process.env.GOOGLE_APPLICATION_CREDENTIALS || './serviceAccountKey.json');
+      console.log('✅ Service account key loaded successfully');
+    } catch (keyError) {
+      console.error('❌ Error loading service account key:', keyError.message);
+      throw new Error('Invalid service account key file');
+    }
+
     admin.initializeApp({
-      credential: admin.credential.cert(require(process.env.GOOGLE_APPLICATION_CREDENTIALS)),
-      projectId: process.env.FIREBASE_PROJECT_ID,
+      credential: admin.credential.cert(serviceAccount),
+      projectId: process.env.FIREBASE_PROJECT_ID || serviceAccount.project_id,
     });
+    
+    console.log('✅ Firebase Admin SDK initialized successfully');
   }
   
   // Get Firestore database instance
   db = admin.firestore();
-  console.log('✅ Firebase Admin SDK initialized successfully');
+  console.log('✅ Firestore database connection established');
   
 } catch (error) {
-  console.error('❌ Error initializing Firebase Admin SDK:', error);
+  console.error('❌ Error initializing Firebase Admin SDK:', error.message);
+  
+  // More specific error messages
+  if (error.message.includes('private key')) {
+    console.error('🔑 The private key in your service account file appears to be invalid.');
+    console.error('📝 Please check that you downloaded the correct service account key from Firebase Console.');
+  }
+  
+  if (error.message.includes('project_id')) {
+    console.error('🏷️ Project ID mismatch. Please verify your Firebase project configuration.');
+  }
+  
   process.exit(1);
 }
 

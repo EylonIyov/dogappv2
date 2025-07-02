@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -26,10 +26,17 @@ export default function AddDogScreen({ navigation }) {
     specialNeeds: '',
   });
   const [loading, setLoading] = useState(false);
-  const [breeds, setBreeds] = useState([]);
-  const [showBreedPicker, setShowBreedPicker] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [breedsLoading, setBreedsLoading] = useState(true);
+  
+  // Auto-complete state
+  const [allBreeds, setAllBreeds] = useState([]);
+  const [filteredBreeds, setFilteredBreeds] = useState([]);
+  const [showBreedSuggestions, setShowBreedSuggestions] = useState(false);
+  const [breedsLoading, setBreedsLoading] = useState(false);
+
+  // Refs for caching
+  const breedsCacheRef = useRef({ data: [], timestamp: null });
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
 
   const dogEmojis = ['🐕', '🐶', '🦮', '🐕‍🦺', '🐩', '🐾'];
   
@@ -44,23 +51,65 @@ export default function AddDogScreen({ navigation }) {
     fetchBreeds();
   }, []);
 
+  // Check if cache is valid
+  const isCacheValid = () => {
+    const { data, timestamp } = breedsCacheRef.current;
+    return data.length > 0 && timestamp && (Date.now() - timestamp < CACHE_DURATION);
+  };
+
   const fetchBreeds = async () => {
     try {
       setBreedsLoading(true);
+      
+      // Check cache first
+      if (isCacheValid()) {
+        setAllBreeds(breedsCacheRef.current.data);
+        setBreedsLoading(false);
+        return;
+      }
+
       const response = await fetch('http://localhost:3000/api/dog-breeds');
       const data = await response.json();
       
       if (data.success) {
-        setBreeds(data.breeds);
+        // Update cache
+        breedsCacheRef.current = {
+          data: data.breeds,
+          timestamp: Date.now()
+        };
+        setAllBreeds(data.breeds);
       } else {
         Alert.alert('Error', 'Failed to load dog breeds');
       }
     } catch (error) {
       console.error('Error fetching breeds:', error);
-      Alert.alert('Error', 'Failed to load dog breeds. Please try again.');
+      Alert.alert('Error', 'Failed to load dog breeds. Please check your connection and try again.');
     } finally {
       setBreedsLoading(false);
     }
+  };
+
+  const handleBreedInputChange = (text) => {
+    setDogData(prev => ({ ...prev, breed: text }));
+    
+    if (text.length >= 2) { // Only show suggestions after 2 characters
+      // Filter breeds based on input
+      const filtered = allBreeds.filter(breed =>
+        breed.toLowerCase().includes(text.toLowerCase())
+      ).slice(0, 8); // Limit to 8 suggestions for better UI
+      
+      setFilteredBreeds(filtered);
+      setShowBreedSuggestions(filtered.length > 0);
+    } else {
+      setShowBreedSuggestions(false);
+      setFilteredBreeds([]);
+    }
+  };
+
+  const selectBreed = (breed) => {
+    setDogData(prev => ({ ...prev, breed }));
+    setShowBreedSuggestions(false);
+    setFilteredBreeds([]);
   };
 
   const validateAge = (ageText) => {
@@ -147,48 +196,6 @@ export default function AddDogScreen({ navigation }) {
     }
   };
 
-  const renderBreedPicker = () => (
-    <Modal visible={showBreedPicker} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Select Breed</Text>
-            <TouchableOpacity onPress={() => setShowBreedPicker(false)}>
-              <Text style={styles.modalCloseButton}>✕</Text>
-            </TouchableOpacity>
-          </View>
-          {breedsLoading ? (
-            <Text style={styles.loadingText}>Loading breeds...</Text>
-          ) : (
-            <FlatList
-              data={breeds}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.pickerItem,
-                    dogData.breed === item && styles.selectedPickerItem
-                  ]}
-                  onPress={() => {
-                    updateField('breed', item);
-                    setShowBreedPicker(false);
-                  }}
-                >
-                  <Text style={[
-                    styles.pickerItemText,
-                    dogData.breed === item && styles.selectedPickerItemText
-                  ]}>
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-
   const renderColorPicker = () => (
     <Modal visible={showColorPicker} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
@@ -269,18 +276,41 @@ export default function AddDogScreen({ navigation }) {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>🐕 Breed *</Text>
-              <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={() => setShowBreedPicker(true)}
-              >
-                <Text style={[
-                  styles.dropdownText,
-                  !dogData.breed && styles.placeholderText
-                ]}>
-                  {dogData.breed || 'Select breed'}
-                </Text>
-                <Text style={styles.dropdownArrow}>▼</Text>
-              </TouchableOpacity>
+              <View style={styles.breedInputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder={breedsLoading ? "Loading breeds..." : "Type your dog's breed..."}
+                  value={dogData.breed}
+                  onChangeText={handleBreedInputChange}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  editable={!breedsLoading}
+                  onFocus={() => {
+                    if (dogData.breed.length > 0) {
+                      handleBreedInputChange(dogData.breed);
+                    }
+                  }}
+                />
+                {showBreedSuggestions && filteredBreeds.length > 0 && (
+                  <View style={styles.suggestionsDropdown}>
+                    <ScrollView
+                      style={styles.suggestionsList}
+                      keyboardShouldPersistTaps="handled"
+                      nestedScrollEnabled
+                    >
+                      {filteredBreeds.map((item) => (
+                        <TouchableOpacity
+                          key={item}
+                          style={styles.suggestionItem}
+                          onPress={() => selectBreed(item)}
+                        >
+                          <Text style={styles.suggestionText}>{item}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
             </View>
 
             <View style={styles.row}>
@@ -388,7 +418,6 @@ export default function AddDogScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {renderBreedPicker()}
       {renderColorPicker()}
     </SafeAreaView>
   );
@@ -534,27 +563,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6B6B',
     opacity: 0.7,
   },
-  dropdownButton: {
-    backgroundColor: '#F8F9FA',
-    borderWidth: 2,
-    borderColor: '#E9ECEF',
-    borderRadius: 12,
-    padding: 15,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dropdownText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  placeholderText: {
-    color: '#A0A0A0',
-  },
-  dropdownArrow: {
-    fontSize: 16,
-    color: '#333',
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -610,5 +618,80 @@ const styles = StyleSheet.create({
   selectedPickerItemText: {
     fontWeight: 'bold',
     color: '#4A90E2',
+  },
+  dropdownButton: {
+    backgroundColor: '#F8F9FA',
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 15,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dropdownText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  placeholderText: {
+    color: '#A0A0A0',
+  },
+  dropdownArrow: {
+    fontSize: 16,
+    color: '#333',
+  },
+  autoCompleteOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  autoCompleteContainer: {
+    width: '90%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  breedInputContainer: {
+    position: 'relative',
+    zIndex: 1,
+  },
+  suggestionsDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    borderTopWidth: 0,
+    zIndex: 1000,
+    maxHeight: 200,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  suggestionsList: {
+    maxHeight: 200,
+  },
+  suggestionItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+    backgroundColor: '#FFFFFF',
   },
 });
