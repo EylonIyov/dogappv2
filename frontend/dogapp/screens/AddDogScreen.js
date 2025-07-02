@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,6 +8,8 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
+  Modal,
+  FlatList,
 } from 'react-native';
 import DogService from '../services/DogService';
 
@@ -24,13 +26,74 @@ export default function AddDogScreen({ navigation }) {
     specialNeeds: '',
   });
   const [loading, setLoading] = useState(false);
+  const [breeds, setBreeds] = useState([]);
+  const [showBreedPicker, setShowBreedPicker] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [breedsLoading, setBreedsLoading] = useState(true);
 
   const dogEmojis = ['🐕', '🐶', '🦮', '🐕‍🦺', '🐩', '🐾'];
+  
+  const dogColors = [
+    'Black', 'Brown', 'White', 'Golden', 'Cream', 'Gray', 'Silver',
+    'Red', 'Blue', 'Chocolate', 'Tan', 'Sable', 'Brindle', 'Merle',
+    'Parti-color', 'Tricolor', 'Black and Tan', 'Black and White',
+    'Brown and White', 'Other'
+  ];
+
+  useEffect(() => {
+    fetchBreeds();
+  }, []);
+
+  const fetchBreeds = async () => {
+    try {
+      setBreedsLoading(true);
+      const response = await fetch('http://localhost:3000/api/dog-breeds');
+      const data = await response.json();
+      
+      if (data.success) {
+        setBreeds(data.breeds);
+      } else {
+        Alert.alert('Error', 'Failed to load dog breeds');
+      }
+    } catch (error) {
+      console.error('Error fetching breeds:', error);
+      Alert.alert('Error', 'Failed to load dog breeds. Please try again.');
+    } finally {
+      setBreedsLoading(false);
+    }
+  };
+
+  const validateAge = (ageText) => {
+    // Remove any non-numeric characters except decimal point
+    const cleanedAge = ageText.replace(/[^0-9.]/g, '');
+    
+    // Check if it's a valid number
+    const ageNumber = parseFloat(cleanedAge);
+    
+    if (isNaN(ageNumber)) {
+      return '';
+    }
+    
+    // Ensure age is within reasonable bounds (0-30 years)
+    if (ageNumber < 0 || ageNumber > 30) {
+      return '';
+    }
+    
+    // Limit to 1 decimal place
+    return Math.round(ageNumber * 10) / 10;
+  };
 
   const handleSave = async () => {
     // Validation
-    if (!dogData.name.trim() || !dogData.breed.trim() || !dogData.age.trim()) {
+    if (!dogData.name.trim() || !dogData.breed.trim() || !dogData.age.toString().trim()) {
       Alert.alert('Missing Information', 'Please fill in at least the name, breed, and age fields.');
+      return;
+    }
+
+    // Validate age is a real number
+    const ageNumber = parseFloat(dogData.age);
+    if (isNaN(ageNumber) || ageNumber <= 0 || ageNumber > 30) {
+      Alert.alert('Invalid Age', 'Please enter a valid age between 0 and 30 years.');
       return;
     }
 
@@ -40,7 +103,7 @@ export default function AddDogScreen({ navigation }) {
       const dogPayload = {
         name: dogData.name.trim(),
         breed: dogData.breed.trim(),
-        age: parseInt(dogData.age),
+        age: ageNumber,
         emoji: dogData.emoji,
         notes: [
           dogData.color ? `Color: ${dogData.color}` : '',
@@ -76,8 +139,93 @@ export default function AddDogScreen({ navigation }) {
   };
 
   const updateField = (field, value) => {
-    setDogData(prev => ({ ...prev, [field]: value }));
+    if (field === 'age') {
+      const validatedAge = validateAge(value);
+      setDogData(prev => ({ ...prev, [field]: validatedAge.toString() }));
+    } else {
+      setDogData(prev => ({ ...prev, [field]: value }));
+    }
   };
+
+  const renderBreedPicker = () => (
+    <Modal visible={showBreedPicker} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Breed</Text>
+            <TouchableOpacity onPress={() => setShowBreedPicker(false)}>
+              <Text style={styles.modalCloseButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          {breedsLoading ? (
+            <Text style={styles.loadingText}>Loading breeds...</Text>
+          ) : (
+            <FlatList
+              data={breeds}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.pickerItem,
+                    dogData.breed === item && styles.selectedPickerItem
+                  ]}
+                  onPress={() => {
+                    updateField('breed', item);
+                    setShowBreedPicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    dogData.breed === item && styles.selectedPickerItemText
+                  ]}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderColorPicker = () => (
+    <Modal visible={showColorPicker} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Color</Text>
+            <TouchableOpacity onPress={() => setShowColorPicker(false)}>
+              <Text style={styles.modalCloseButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={dogColors}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.pickerItem,
+                  dogData.color === item && styles.selectedPickerItem
+                ]}
+                onPress={() => {
+                  updateField('color', item);
+                  setShowColorPicker(false);
+                }}
+              >
+                <Text style={[
+                  styles.pickerItemText,
+                  dogData.color === item && styles.selectedPickerItemText
+                ]}>
+                  {item}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -121,20 +269,26 @@ export default function AddDogScreen({ navigation }) {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>🐕 Breed *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Golden Retriever, Mixed Breed"
-                value={dogData.breed}
-                onChangeText={(value) => updateField('breed', value)}
-              />
+              <TouchableOpacity
+                style={styles.dropdownButton}
+                onPress={() => setShowBreedPicker(true)}
+              >
+                <Text style={[
+                  styles.dropdownText,
+                  !dogData.breed && styles.placeholderText
+                ]}>
+                  {dogData.breed || 'Select breed'}
+                </Text>
+                <Text style={styles.dropdownArrow}>▼</Text>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.row}>
               <View style={[styles.inputGroup, styles.halfWidth]}>
-                <Text style={styles.label}>🎂 Age *</Text>
+                <Text style={styles.label}>🎂 Age (years) *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Years"
+                  placeholder="e.g., 2.5"
                   value={dogData.age}
                   onChangeText={(value) => updateField('age', value)}
                   keyboardType="numeric"
@@ -143,12 +297,18 @@ export default function AddDogScreen({ navigation }) {
 
               <View style={[styles.inputGroup, styles.halfWidth]}>
                 <Text style={styles.label}>🎨 Color</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., Brown, Black"
-                  value={dogData.color}
-                  onChangeText={(value) => updateField('color', value)}
-                />
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => setShowColorPicker(true)}
+                >
+                  <Text style={[
+                    styles.dropdownText,
+                    !dogData.color && styles.placeholderText
+                  ]}>
+                    {dogData.color || 'Select color'}
+                  </Text>
+                  <Text style={styles.dropdownArrow}>▼</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -227,6 +387,9 @@ export default function AddDogScreen({ navigation }) {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {renderBreedPicker()}
+      {renderColorPicker()}
     </SafeAreaView>
   );
 }
@@ -370,5 +533,82 @@ const styles = StyleSheet.create({
   disabledButton: {
     backgroundColor: '#FF6B6B',
     opacity: 0.7,
+  },
+  dropdownButton: {
+    backgroundColor: '#F8F9FA',
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 15,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dropdownText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  placeholderText: {
+    color: '#A0A0A0',
+  },
+  dropdownArrow: {
+    fontSize: 16,
+    color: '#333',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  modalCloseButton: {
+    fontSize: 18,
+    color: '#FF6B6B',
+  },
+  loadingText: {
+    textAlign: 'center',
+    color: '#666',
+    marginTop: 10,
+  },
+  pickerItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E9ECEF',
+  },
+  selectedPickerItem: {
+    backgroundColor: '#E8F4FD',
+  },
+  pickerItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  selectedPickerItemText: {
+    fontWeight: 'bold',
+    color: '#4A90E2',
   },
 });

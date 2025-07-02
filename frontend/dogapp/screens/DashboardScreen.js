@@ -142,7 +142,7 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.headerLeft}>
               <Text style={styles.welcomeText}>Welcome to your pack! 🎾</Text>
               <Text style={styles.subText}>
-                {currentUser?.email && `${currentUser.email} • `}
+                {currentUser?.fullName && `${currentUser.fullName} • `}
                 {dogs.length === 0 
                   ? "You haven't added any dogs yet" 
                   : `You have ${dogs.length} furry friend${dogs.length > 1 ? 's' : ''}`

@@ -84,7 +84,23 @@ export default function SignupScreen({ navigation }) {
           }}
         ]);
       } else {
-        Alert.alert('Sign Up Error', result.error);
+        // Check if it's an email already exists error
+        if (result.error && result.error.includes('already exists')) {
+          Alert.alert(
+            'Email Already Registered', 
+            result.error,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Sign In Instead', 
+                style: 'default',
+                onPress: () => navigation.navigate('Login')
+              }
+            ]
+          );
+        } else {
+          Alert.alert('Sign Up Error', result.error);
+        }
       }
     } catch (error) {
       console.error('Sign up error:', error);

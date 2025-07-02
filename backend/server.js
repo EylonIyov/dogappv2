@@ -16,8 +16,8 @@ app.use(express.json());
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
 
 // Firestore collections
-const usersCollection = db.collection('test_users'); // Changed from 'users' to 'test_users'
-const dogsCollection = db.collection('dogs');
+const usersCollection = db.collection('test_users');
+const dogsCollection = db.collection('test_dogs'); // Changed from 'dogs' to 'test_dogs'
 
 // Middleware to verify JWT token
 const authenticateToken = (req, res, next) => {
@@ -97,7 +97,10 @@ app.post('/api/auth/register', async (req, res) => {
     // Check if user already exists
     const existingUserSnapshot = await usersCollection.where('email', '==', email).get();
     if (!existingUserSnapshot.empty) {
-      return res.status(400).json({ error: 'User with this email already exists' });
+      return res.status(409).json({ 
+        error: 'An account with this email already exists. Would you like to sign in instead?',
+        code: 'EMAIL_ALREADY_EXISTS'
+      });
     }
 
     // Hash password
@@ -251,6 +254,73 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 // Logout (client-side token removal, but we can track it server-side if needed)
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
   res.json({ message: 'Logout successful' });
+});
+
+// DOG BREEDS API ENDPOINT
+
+// Get all dog breeds from external API
+app.get('/api/dog-breeds', async (req, res) => {
+  try {
+    const apiKey = process.env.DOG_BREEDS_API_KEY;
+    const apiUrl = process.env.DOG_BREEDS_API_URL;
+    
+    if (!apiKey || apiKey === 'your-dog-breeds-api-key-here') {
+      // Return a fallback list if API key is not configured
+      const fallbackBreeds = [
+        'Golden Retriever', 'Labrador Retriever', 'German Shepherd', 'Bulldogs', 'Poodle',
+        'Beagle', 'Rottweiler', 'Yorkshire Terrier', 'Dachshund', 'Siberian Husky',
+        'Boxer', 'Great Dane', 'Chihuahua', 'Shih Tzu', 'Boston Terrier',
+        'Bernese Mountain Dog', 'Cocker Spaniel', 'Border Collie', 'Australian Shepherd',
+        'Mixed Breed', 'Unknown'
+      ];
+      
+      return res.json({ 
+        success: true, 
+        breeds: fallbackBreeds.sort(),
+        source: 'fallback'
+      });
+    }
+
+    const response = await fetch(`${apiUrl}/breeds`, {
+      headers: {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch breeds from external API');
+    }
+
+    const breedsData = await response.json();
+    
+    // Extract breed names and sort them
+    const breedNames = breedsData.map(breed => breed.name).sort();
+    
+    res.json({ 
+      success: true, 
+      breeds: breedNames,
+      source: 'api'
+    });
+
+  } catch (error) {
+    console.error('Error fetching dog breeds:', error);
+    
+    // Return fallback breeds on error
+    const fallbackBreeds = [
+      'Golden Retriever', 'Labrador Retriever', 'German Shepherd', 'Bulldogs', 'Poodle',
+      'Beagle', 'Rottweiler', 'Yorkshire Terrier', 'Dachshund', 'Siberian Husky',
+      'Boxer', 'Great Dane', 'Chihuahua', 'Shih Tzu', 'Boston Terrier',
+      'Bernese Mountain Dog', 'Cocker Spaniel', 'Border Collie', 'Australian Shepherd',
+      'Mixed Breed', 'Unknown'
+    ];
+    
+    res.json({ 
+      success: true, 
+      breeds: fallbackBreeds.sort(),
+      source: 'fallback'
+    });
+  }
 });
 
 // DOG MANAGEMENT ROUTES
@@ -429,4 +499,6 @@ app.listen(PORT, () => {
   console.log(`  GET    http://localhost:${PORT}/api/dogs/:dogId`);
   console.log(`  PUT    http://localhost:${PORT}/api/dogs/:dogId`);
   console.log(`  DELETE http://localhost:${PORT}/api/dogs/:dogId`);
+  console.log(`BREEDS:`);
+  console.log(`  GET    http://localhost:${PORT}/api/dog-breeds`);
 });

@@ -1,12 +1,48 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Alert } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import DogService from '../services/DogService';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
+
+  const checkForFirstTimeUser = async () => {
+    try {
+      // Check if user has any dogs
+      const result = await DogService.getDogs();
+      
+      if (result.success && result.dogs.length === 0) {
+        // User has no dogs, ask if they want to add their first one
+        Alert.alert(
+          'Welcome to DogApp! 🐕',
+          'Would you like to add your first furry friend now?',
+          [
+            { 
+              text: 'Maybe Later', 
+              style: 'cancel',
+              onPress: () => {
+                // User will stay on dashboard
+              }
+            },
+            { 
+              text: 'Add My Dog', 
+              style: 'default',
+              onPress: () => {
+                navigation.navigate('AddDog');
+              }
+            }
+          ]
+        );
+      }
+      // If user has dogs or there's an error, just continue normally
+    } catch (error) {
+      console.error('Error checking user dogs:', error);
+      // Continue normally if there's an error
+    }
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -20,6 +56,12 @@ export default function LoginScreen({ navigation }) {
       
       if (result.success) {
         console.log('User logged in successfully');
+        
+        // Wait a moment for auth state to update, then check if it's first time
+        setTimeout(() => {
+          checkForFirstTimeUser();
+        }, 1000);
+        
         // Navigation will happen automatically due to auth state change
       } else {
         Alert.alert('Login Error', result.error);
