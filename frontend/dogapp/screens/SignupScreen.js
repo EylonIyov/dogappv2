@@ -1,17 +1,37 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Alert } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Alert, ScrollView, Platform } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [gender, setGender] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
 
+  const onDateChange = (event, selectedDate) => {
+    const currentDate = selectedDate || dateOfBirth;
+    // Only update the date, don't close the picker
+    setDateOfBirth(currentDate);
+  };
+
+  const toggleDatePicker = () => {
+    setShowDatePicker(!showDatePicker);
+  };
+
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-CA'); // Returns YYYY-MM-DD format
+  };
+
   const handleSignUp = async () => {
-    if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
+    // Validation for all required fields
+    if (!email.trim() || !password.trim() || !confirmPassword.trim() || !fullName.trim() || !gender.trim()) {
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
@@ -32,9 +52,29 @@ export default function SignupScreen({ navigation }) {
       return;
     }
 
+    // Validate that the date is not in the future
+    const today = new Date();
+    if (dateOfBirth > today) {
+      Alert.alert('Error', 'Date of birth cannot be in the future');
+      return;
+    }
+
+    // Validate minimum age (13 years old)
+    const age = today.getFullYear() - dateOfBirth.getFullYear();
+    const monthDiff = today.getMonth() - dateOfBirth.getMonth();
+    let calculatedAge = age;
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dateOfBirth.getDate())) {
+      calculatedAge--;
+    }
+    
+    if (calculatedAge < 13) {
+      Alert.alert('Error', 'You must be at least 13 years old to register');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const result = await register(email, password);
+      const result = await register(email, password, fullName, formatDate(dateOfBirth), gender);
       
       if (result.success) {
         console.log('User registered successfully');
@@ -56,7 +96,7 @@ export default function SignupScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={styles.dogEmoji}>🐾</Text>
           <Text style={styles.title}>Join DogApp</Text>
@@ -65,7 +105,21 @@ export default function SignupScreen({ navigation }) {
         
         <View style={styles.formContainer}>
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>📧 Email Address</Text>
+            <Text style={styles.inputLabel}>👤 Full Name *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your full name"
+              placeholderTextColor="#A0A0A0"
+              value={fullName}
+              onChangeText={setFullName}
+              autoCapitalize="words"
+              autoCorrect={false}
+              autoComplete="name"
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>📧 Email Address *</Text>
             <TextInput
               style={styles.input}
               placeholder="Enter your email"
@@ -78,30 +132,86 @@ export default function SignupScreen({ navigation }) {
               autoComplete="email"
             />
           </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>🎂 Date of Birth *</Text>
+            <TouchableOpacity 
+              style={styles.datePickerButton}
+              onPress={toggleDatePicker}
+            >
+              <Text style={styles.datePickerText}>
+                {formatDate(dateOfBirth)} 📅
+              </Text>
+            </TouchableOpacity>
+            
+            {showDatePicker && (
+              <DateTimePicker
+                testID="dateTimePicker"
+                value={dateOfBirth}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onDateChange}
+                maximumDate={new Date()} // Prevent future dates
+                minimumDate={new Date(1920, 0, 1)} // Set reasonable minimum date
+              />
+            )}
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>⚧ Gender *</Text>
+            <View style={styles.genderContainer}>
+              <TouchableOpacity 
+                style={[styles.genderButton, gender === 'male' && styles.selectedGender]}
+                onPress={() => setGender('male')}
+              >
+                <Text style={[styles.genderText, gender === 'male' && styles.selectedGenderText]}>👨 Male</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.genderButton, gender === 'female' && styles.selectedGender]}
+                onPress={() => setGender('female')}
+              >
+                <Text style={[styles.genderText, gender === 'female' && styles.selectedGenderText]}>👩 Female</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.genderButton, gender === 'other' && styles.selectedGender]}
+                onPress={() => setGender('other')}
+              >
+                <Text style={[styles.genderText, gender === 'other' && styles.selectedGenderText]}>🏳️‍⚧️ Other</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
           
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>🔒 Password</Text>
+            <Text style={styles.inputLabel}>🔒 Password *</Text>
             <TextInput
               style={styles.input}
               placeholder="Create a password (min 6 characters)"
               placeholderTextColor="#A0A0A0"
-              secureTextEntry
+              secureTextEntry={true}
               value={password}
               onChangeText={setPassword}
               autoComplete="password-new"
+              autoCorrect={false}
+              autoCapitalize="none"
+              textContentType="newPassword"
+              returnKeyType="next"
             />
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>🔒 Confirm Password</Text>
+            <Text style={styles.inputLabel}>🔒 Confirm Password *</Text>
             <TextInput
               style={styles.input}
               placeholder="Confirm your password"
               placeholderTextColor="#A0A0A0"
-              secureTextEntry
+              secureTextEntry={true}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               autoComplete="password-new"
+              autoCorrect={false}
+              autoCapitalize="none"
+              textContentType="newPassword"
+              returnKeyType="done"
             />
           </View>
           
@@ -127,9 +237,10 @@ export default function SignupScreen({ navigation }) {
         </View>
         
         <View style={styles.footer}>
+          <Text style={styles.footerText}>* Required fields</Text>
           <Text style={styles.footerText}>By signing up, you agree to our Terms & Privacy Policy</Text>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -137,16 +248,19 @@ export default function SignupScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FF6B6B', // Different color from login screen
+    backgroundColor: '#FF6B6B',
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  scrollContent: {
     padding: 20,
-    justifyContent: 'center',
+    paddingBottom: 40,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 30,
+    marginTop: 20,
   },
   dogEmoji: {
     fontSize: 60,
@@ -243,5 +357,43 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.6,
+  },
+  genderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  genderButton: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+  },
+  selectedGender: {
+    backgroundColor: '#4A90E2',
+    borderColor: '#4A90E2',
+  },
+  genderText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  selectedGenderText: {
+    color: '#FFFFFF',
+  },
+  datePickerButton: {
+    backgroundColor: '#F8F9FA',
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 15,
+    alignItems: 'center',
+  },
+  datePickerText: {
+    fontSize: 16,
+    color: '#333',
   },
 });
