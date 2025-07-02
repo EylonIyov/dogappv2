@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { db, serverTimestamp } = require('./firebase-config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,13 +12,12 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// For now, we'll use in-memory storage for testing
-// You can replace this with Firebase/database later
-let users = [];
-let dogs = []; // Add dogs storage
-
 // JWT Secret (in production, use environment variable)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
+
+// Firestore collections
+const usersCollection = db.collection('test_users'); // Changed from 'users' to 'test_users'
+const dogsCollection = db.collection('dogs');
 
 // Middleware to verify JWT token
 const authenticateToken = (req, res, next) => {
@@ -37,6 +37,20 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Helper function to calculate age from date of birth
+const calculateAge = (dateOfBirth) => {
+  const today = new Date();
+  const birthDate = new Date(dateOfBirth);
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  
+  return age;
+};
+
 // Routes
 
 // Health check
@@ -47,50 +61,98 @@ app.get('/health', (req, res) => {
 // User Registration
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { 
+      email, 
+      password, 
+      fullName, 
+      dateOfBirth, 
+      gender,
+      profileImageUrl,
+      preferences 
+    } = req.body;
 
-    // Validation
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    // Validation - required fields
+    if (!email || !password || !fullName || !dateOfBirth || !gender) {
+      return res.status(400).json({ 
+        error: 'Email, password, full name, date of birth, and gender are required' 
+      });
     }
 
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters long' });
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Please provide a valid email address' });
+    }
+
+    // Validate date of birth
+    const birthDate = new Date(dateOfBirth);
+    if (isNaN(birthDate.getTime())) {
+      return res.status(400).json({ error: 'Please provide a valid date of birth' });
+    }
+
     // Check if user already exists
-    const existingUser = users.find(user => user.email === email);
-    if (existingUser) {
+    const existingUserSnapshot = await usersCollection.where('email', '==', email).get();
+    if (!existingUserSnapshot.empty) {
       return res.status(400).json({ error: 'User with this email already exists' });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user (in-memory for now)
-    const newUser = {
-      id: Date.now().toString(), // Simple ID generation
+    // Calculate age from date of birth
+    const age = calculateAge(dateOfBirth);
+
+    // Prepare user data according to the new schema
+    const currentTime = serverTimestamp();
+    const userData = {
       email,
       password: hashedPassword,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      fullName,
+      dateOfBirth: new Date(dateOfBirth), // Convert to Firestore timestamp
+      age,
+      gender,
+      uid: '', // Will be set to document ID after creation
+      isActive: true,
+      CreatedAt: currentTime,
+      updatedAt: currentTime,
+      lastLoginAt: currentTime,
+      profileImageUrl: profileImageUrl || '/',
+      preferences: {
+        language: preferences?.language || 'he',
+        notifications: preferences?.notifications !== undefined ? preferences.notifications : true,
+        theme: preferences?.theme || 'black'
+      }
     };
 
-    users.push(newUser);
+    // Create user in Firestore
+    const userDoc = await usersCollection.add(userData);
+
+    // Update the uid field with the document ID
+    await usersCollection.doc(userDoc.id).update({
+      uid: userDoc.id
+    });
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: newUser.id, email },
+      { userId: userDoc.id, email },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
+    // Return user data (excluding password)
+    const { password: _, ...userResponse } = userData;
+    
     res.status(201).json({
       message: 'User created successfully',
       token,
       user: {
-        id: newUser.id,
-        email: newUser.email
+        id: userDoc.id,
+        uid: userDoc.id,
+        ...userResponse
       }
     });
 
@@ -111,14 +173,17 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // Find user
-    const user = users.find(u => u.email === email);
+    const userSnapshot = await usersCollection.where('email', '==', email).get();
     
-    if (!user) {
+    if (userSnapshot.empty) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    const userDoc = userSnapshot.docs[0];
+    const userData = userDoc.data();
+
     // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const isValidPassword = await bcrypt.compare(password, userData.password);
     
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -126,20 +191,26 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.id, email },
+      { userId: userDoc.id, email },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
     // Update last login
-    user.lastLogin = new Date();
+    await usersCollection.doc(userDoc.id).update({
+      lastLoginAt: serverTimestamp()
+    });
+
+    // Return user data (excluding password)
+    const { password: _, ...userDataResponse } = userData;
 
     res.json({
       message: 'Login successful',
       token,
       user: {
-        id: user.id,
-        email: user.email
+        id: userDoc.id,
+        uid: userDoc.id,
+        ...userDataResponse
       }
     });
 
@@ -152,18 +223,22 @@ app.post('/api/auth/login', async (req, res) => {
 // Get current user (protected route)
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
-    const user = users.find(u => u.id === req.user.userId);
+    const userDoc = await usersCollection.doc(req.user.userId).get();
     
-    if (!user) {
+    if (!userDoc.exists) {
       return res.status(404).json({ error: 'User not found' });
     }
     
+    const userData = userDoc.data();
+    
+    // Return complete user profile (excluding password)
+    const { password: _, ...userProfile } = userData;
+    
     res.json({
       user: {
-        id: user.id,
-        email: user.email,
-        createdAt: user.createdAt,
-        lastLogin: user.lastLogin
+        id: userDoc.id,
+        uid: userDoc.id,
+        ...userProfile
       }
     });
 
@@ -181,9 +256,18 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
 // DOG MANAGEMENT ROUTES
 
 // Get all dogs for the authenticated user
-app.get('/api/dogs', authenticateToken, (req, res) => {
+app.get('/api/dogs', authenticateToken, async (req, res) => {
   try {
-    const userDogs = dogs.filter(dog => dog.userId === req.user.userId);
+    const dogsSnapshot = await dogsCollection.where('userId', '==', req.user.userId).get();
+    
+    const userDogs = [];
+    dogsSnapshot.forEach(doc => {
+      userDogs.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
     res.json({ dogs: userDogs });
   } catch (error) {
     console.error('Get dogs error:', error);
@@ -192,7 +276,7 @@ app.get('/api/dogs', authenticateToken, (req, res) => {
 });
 
 // Add a new dog for the authenticated user
-app.post('/api/dogs', authenticateToken, (req, res) => {
+app.post('/api/dogs', authenticateToken, async (req, res) => {
   try {
     const { name, breed, age, emoji, weight, birthday, notes } = req.body;
 
@@ -201,9 +285,8 @@ app.post('/api/dogs', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Name, breed, and age are required' });
     }
 
-    // Create new dog
-    const newDog = {
-      id: Date.now().toString(),
+    // Create new dog in Firestore
+    const dogDoc = await dogsCollection.add({
       userId: req.user.userId, // Associate with authenticated user
       name,
       breed,
@@ -212,15 +295,20 @@ app.post('/api/dogs', authenticateToken, (req, res) => {
       weight: weight || null,
       birthday: birthday || null,
       notes: notes || '',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
 
-    dogs.push(newDog);
+    // Get the created dog data
+    const createdDog = await dogDoc.get();
+    const dogData = createdDog.data();
 
     res.status(201).json({
       message: 'Dog added successfully',
-      dog: newDog
+      dog: {
+        id: dogDoc.id,
+        ...dogData
+      }
     });
 
   } catch (error) {
@@ -230,34 +318,44 @@ app.post('/api/dogs', authenticateToken, (req, res) => {
 });
 
 // Update a dog (only if it belongs to the authenticated user)
-app.put('/api/dogs/:dogId', authenticateToken, (req, res) => {
+app.put('/api/dogs/:dogId', authenticateToken, async (req, res) => {
   try {
     const { dogId } = req.params;
     const { name, breed, age, emoji, weight, birthday, notes } = req.body;
 
-    // Find the dog
-    const dogIndex = dogs.findIndex(dog => dog.id === dogId && dog.userId === req.user.userId);
+    // Find the dog and verify ownership
+    const dogDoc = await dogsCollection.doc(dogId).get();
     
-    if (dogIndex === -1) {
+    if (!dogDoc.exists || dogDoc.data().userId !== req.user.userId) {
       return res.status(404).json({ error: 'Dog not found or not authorized' });
     }
 
-    // Update the dog
-    dogs[dogIndex] = {
-      ...dogs[dogIndex],
-      name: name || dogs[dogIndex].name,
-      breed: breed || dogs[dogIndex].breed,
-      age: age ? parseInt(age) : dogs[dogIndex].age,
-      emoji: emoji || dogs[dogIndex].emoji,
-      weight: weight !== undefined ? weight : dogs[dogIndex].weight,
-      birthday: birthday !== undefined ? birthday : dogs[dogIndex].birthday,
-      notes: notes !== undefined ? notes : dogs[dogIndex].notes,
-      updatedAt: new Date()
+    // Prepare update data
+    const updateData = {
+      updatedAt: serverTimestamp()
     };
+
+    if (name !== undefined) updateData.name = name;
+    if (breed !== undefined) updateData.breed = breed;
+    if (age !== undefined) updateData.age = parseInt(age);
+    if (emoji !== undefined) updateData.emoji = emoji;
+    if (weight !== undefined) updateData.weight = weight;
+    if (birthday !== undefined) updateData.birthday = birthday;
+    if (notes !== undefined) updateData.notes = notes;
+
+    // Update the dog
+    await dogsCollection.doc(dogId).update(updateData);
+
+    // Get updated dog data
+    const updatedDog = await dogsCollection.doc(dogId).get();
+    const updatedData = updatedDog.data();
 
     res.json({
       message: 'Dog updated successfully',
-      dog: dogs[dogIndex]
+      dog: {
+        id: dogId,
+        ...updatedData
+      }
     });
 
   } catch (error) {
@@ -267,19 +365,19 @@ app.put('/api/dogs/:dogId', authenticateToken, (req, res) => {
 });
 
 // Delete a dog (only if it belongs to the authenticated user)
-app.delete('/api/dogs/:dogId', authenticateToken, (req, res) => {
+app.delete('/api/dogs/:dogId', authenticateToken, async (req, res) => {
   try {
     const { dogId } = req.params;
 
-    // Find the dog
-    const dogIndex = dogs.findIndex(dog => dog.id === dogId && dog.userId === req.user.userId);
+    // Find the dog and verify ownership
+    const dogDoc = await dogsCollection.doc(dogId).get();
     
-    if (dogIndex === -1) {
+    if (!dogDoc.exists || dogDoc.data().userId !== req.user.userId) {
       return res.status(404).json({ error: 'Dog not found or not authorized' });
     }
 
-    // Remove the dog
-    dogs.splice(dogIndex, 1);
+    // Delete the dog
+    await dogsCollection.doc(dogId).delete();
 
     res.json({ message: 'Dog deleted successfully' });
 
@@ -290,17 +388,24 @@ app.delete('/api/dogs/:dogId', authenticateToken, (req, res) => {
 });
 
 // Get a specific dog (only if it belongs to the authenticated user)
-app.get('/api/dogs/:dogId', authenticateToken, (req, res) => {
+app.get('/api/dogs/:dogId', authenticateToken, async (req, res) => {
   try {
     const { dogId } = req.params;
 
-    const dog = dogs.find(dog => dog.id === dogId && dog.userId === req.user.userId);
+    const dogDoc = await dogsCollection.doc(dogId).get();
     
-    if (!dog) {
+    if (!dogDoc.exists || dogDoc.data().userId !== req.user.userId) {
       return res.status(404).json({ error: 'Dog not found or not authorized' });
     }
 
-    res.json({ dog });
+    const dogData = dogDoc.data();
+
+    res.json({ 
+      dog: {
+        id: dogId,
+        ...dogData
+      }
+    });
 
   } catch (error) {
     console.error('Get dog error:', error);
