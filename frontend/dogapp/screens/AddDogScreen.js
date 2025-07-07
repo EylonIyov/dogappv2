@@ -5,12 +5,12 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  SafeAreaView,
   ScrollView,
   Alert,
   Modal,
   FlatList,
   Image,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import DogService from '../services/DogService';
@@ -238,8 +238,13 @@ export default function AddDogScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        bounces={false}
+      >
         <View style={styles.content}>
           <View style={styles.header}>
             <Text style={styles.title}>Add Your Furry Friend 🐾</Text>
@@ -436,21 +441,25 @@ export default function AddDogScreen({ navigation }) {
               <Text style={styles.uploadingText}>Uploading photo...</Text>
             )}
           </View>
+
+          {/* Save Button moved inside ScrollView */}
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity 
+              style={[styles.saveButton, loading && styles.disabledButton]} 
+              onPress={handleSave}
+              disabled={loading}
+            >
+              <Text style={styles.saveButtonText}>
+                {loading ? '🐾 Adding to Pack...' : '🐾 Add to My Pack!'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Bottom padding for web scrolling */}
+          <View style={styles.bottomPadding} />
         </View>
       </ScrollView>
-
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity 
-          style={[styles.saveButton, loading && styles.disabledButton]} 
-          onPress={handleSave}
-          disabled={loading}
-        >
-          <Text style={styles.saveButtonText}>
-            {loading ? '🐾 Adding to Pack...' : '🐾 Add to My Pack!'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -458,12 +467,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F9FA',
+    ...(Platform.OS === 'web' && {
+      minHeight: '100vh',
+      height: 'auto', // Allow dynamic height on web
+    }),
   },
   scrollView: {
     flex: 1,
+    ...(Platform.OS === 'web' && {
+      height: 'auto', // Allow dynamic height
+      minHeight: '100%',
+    }),
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingBottom: 20,
+    ...(Platform.OS === 'web' && {
+      minHeight: 'auto', // Remove minimum height constraint
+      paddingBottom: 150, // Extra padding for web
+      justifyContent: 'flex-start', // Don't center content on web
+    }),
   },
   content: {
     padding: 20,
+    minHeight: '100%', // Web-specific: ensure content takes full height
   },
   header: {
     alignItems: 'center',
@@ -570,6 +598,7 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     padding: 20,
+    marginTop: 'auto', // Web-specific: push button to bottom
   },
   saveButton: {
     backgroundColor: '#FF6B6B',
@@ -821,5 +850,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#666',
     marginTop: 10,
+  },
+  bottomPadding: {
+    height: 50,
+    ...(Platform.OS === 'web' && {
+      height: 200, // Much larger padding for web
+    }),
   },
 });

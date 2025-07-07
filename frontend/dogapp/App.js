@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
+import { Platform, View } from 'react-native';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginScreen from './screens/LoginScreen';
@@ -16,18 +17,39 @@ const Stack = createStackNavigator();
 function AppNavigator() {
   const { currentUser } = useAuth();
 
+  // Web-specific screen options to fix scrolling
+  const webScreenOptions = Platform.OS === 'web' ? {
+    cardStyle: { 
+      flex: 1,
+      // The following properties will be applied to the stack navigator's card.
+      // This allows the content of each screen to grow and scroll as needed.
+      display: 'flex',
+      flexDirection: 'column',
+    },
+    headerStyle: {
+      backgroundColor: '#4A90E2',
+      position: 'relative' // Don't use fixed positioning
+    },
+    headerTintColor: '#fff',
+    headerTitleStyle: {
+      fontWeight: 'bold',
+    },
+  } : {
+    headerStyle: {
+      backgroundColor: '#4A90E2',
+    },
+    headerTintColor: '#fff',
+    headerTitleStyle: {
+      fontWeight: 'bold',
+    },
+  };
+
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      documentTitle={{ formatter: (options, route) => options?.title ?? route?.name }}
+    >
       <Stack.Navigator 
-        screenOptions={{
-          headerStyle: {
-            backgroundColor: '#4A90E2',
-          },
-          headerTintColor: '#fff',
-          headerTitleStyle: {
-            fontWeight: 'bold',
-          },
-        }}
+        screenOptions={webScreenOptions}
       >
         {currentUser ? (
           // User is authenticated - show app screens
@@ -43,7 +65,9 @@ function AppNavigator() {
             <Stack.Screen 
               name="AddDog" 
               component={AddDogScreen} 
-              options={{ title: '🐾 Add New Dog' }}
+              options={{ 
+                title: '🐾 Add New Dog'
+              }}
             />
             <Stack.Screen 
               name="DogProfile" 
@@ -53,7 +77,9 @@ function AppNavigator() {
             <Stack.Screen 
               name="EditDog" 
               component={EditDogScreen} 
-              options={{ title: '✏️ Edit Dog Profile' }}
+              options={{ 
+                title: '✏️ Edit Dog Profile'
+              }}
             />
           </>
         ) : (
@@ -80,7 +106,9 @@ function AppNavigator() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppNavigator />
+      <View style={{ flex: 1 }}>
+        <AppNavigator />
+      </View>
     </AuthProvider>
   );
 }

@@ -5,9 +5,9 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  SafeAreaView,
   ScrollView,
   Alert,
+  Platform,
 } from 'react-native';
 import DogService from '../services/DogService';
 
@@ -170,157 +170,164 @@ export default function EditDogScreen({ route, navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Edit {dog.name}'s Profile 🐾</Text>
-            <Text style={styles.subtitle}>Update your dog's information</Text>
+    <ScrollView 
+      style={styles.container} // Use container style directly on ScrollView
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={true}
+      bounces={false}
+    >
+      <View style={styles.content} onStartShouldSetResponder={Platform.OS !== 'web' ? () => true : undefined}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Edit {dog.name}'s Profile 🐾</Text>
+          <Text style={styles.subtitle}>Update your dog's information</Text>
+        </View>
+
+        <View style={styles.formContainer}>
+          {/* Emoji Selection */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Choose an emoji for your dog:</Text>
+            <View style={styles.emojiContainer}>
+              {dogEmojis.map((emoji) => (
+                <TouchableOpacity
+                  key={emoji}
+                  style={[
+                    styles.emojiButton,
+                    dogData.emoji === emoji && styles.selectedEmoji,
+                  ]}
+                  onPress={() => updateField('emoji', emoji)}
+                >
+                  <Text style={styles.emojiText}>{emoji}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
 
-          <View style={styles.formContainer}>
-            {/* Emoji Selection */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Choose an emoji for your dog:</Text>
-              <View style={styles.emojiContainer}>
-                {dogEmojis.map((emoji) => (
-                  <TouchableOpacity
-                    key={emoji}
-                    style={[
-                      styles.emojiButton,
-                      dogData.emoji === emoji && styles.selectedEmoji,
-                    ]}
-                    onPress={() => updateField('emoji', emoji)}
-                  >
-                    <Text style={styles.emojiText}>{emoji}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+          {/* Basic Information */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>🏷️ Name *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your dog's name"
+              value={dogData.name}
+              onChangeText={(value) => updateField('name', value)}
+            />
+          </View>
 
-            {/* Basic Information */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>🏷️ Name *</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>🐕 Breed *</Text>
+            <View style={styles.breedInputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="Enter your dog's name"
-                value={dogData.name}
-                onChangeText={(value) => updateField('name', value)}
+                placeholder={breedsLoading ? "Loading breeds..." : "Type your dog's breed..."}
+                value={dogData.breed}
+                onChangeText={handleBreedInputChange}
+                autoCapitalize="words"
+                autoCorrect={false}
+                editable={!breedsLoading}
+                onFocus={() => {
+                  if (dogData.breed.length > 0) {
+                    handleBreedInputChange(dogData.breed);
+                  }
+                }}
               />
+              {showBreedSuggestions && filteredBreeds.length > 0 && (
+                <View style={styles.suggestionsDropdown}>
+                  <ScrollView
+                    style={styles.suggestionsList}
+                    keyboardShouldPersistTaps="handled"
+                    nestedScrollEnabled
+                  >
+                    {filteredBreeds.map((item) => (
+                      <TouchableOpacity
+                        key={item}
+                        style={styles.suggestionItem}
+                        onPress={() => selectBreed(item)}
+                      >
+                        <Text style={styles.suggestionText}>{item}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
             </View>
+          </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>🐕 Breed *</Text>
-              <View style={styles.breedInputContainer}>
-                <TextInput
-                  style={styles.input}
-                  placeholder={breedsLoading ? "Loading breeds..." : "Type your dog's breed..."}
-                  value={dogData.breed}
-                  onChangeText={handleBreedInputChange}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  editable={!breedsLoading}
-                  onFocus={() => {
-                    if (dogData.breed.length > 0) {
-                      handleBreedInputChange(dogData.breed);
-                    }
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>🎂 Age (years) *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g., 2.5"
+              value={dogData.age}
+              onChangeText={(value) => updateField('age', value)}
+              keyboardType="numeric"
+            />
+          </View>
+
+          {/* Energy Level */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>⚡ Energy Level</Text>
+            <View style={styles.energyLevelContainer}>
+              {energyLevels.map((level) => (
+                <TouchableOpacity
+                  key={level}
+                  style={[
+                    styles.energyLevelButton,
+                    dogData.energyLevel === level && styles.selectedEnergyLevel,
+                  ]}
+                  onPress={() => updateField('energyLevel', level)}
+                >
+                  <Text style={[
+                    styles.energyLevelText,
+                    dogData.energyLevel === level && styles.selectedEnergyLevelText
+                  ]}>
+                    {level}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Play Style */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>🎭 Play Style (Select multiple)</Text>
+            <View style={styles.playStyleContainer}>
+              {playStyles.map((style) => (
+                <TouchableOpacity
+                  key={style}
+                  style={[
+                    styles.playStyleButton,
+                    dogData.playStyle.includes(style) && styles.selectedPlayStyle,
+                  ]}
+                  onPress={() => {
+                    const newPlayStyle = dogData.playStyle.includes(style)
+                      ? dogData.playStyle.filter(s => s !== style)
+                      : [...dogData.playStyle, style];
+                    updateField('playStyle', newPlayStyle);
                   }}
-                />
-                {showBreedSuggestions && filteredBreeds.length > 0 && (
-                  <View style={styles.suggestionsDropdown}>
-                    <ScrollView
-                      style={styles.suggestionsList}
-                      keyboardShouldPersistTaps="handled"
-                      nestedScrollEnabled
-                    >
-                      {filteredBreeds.map((item) => (
-                        <TouchableOpacity
-                          key={item}
-                          style={styles.suggestionItem}
-                          onPress={() => selectBreed(item)}
-                        >
-                          <Text style={styles.suggestionText}>{item}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>🎂 Age (years) *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., 2.5"
-                value={dogData.age}
-                onChangeText={(value) => updateField('age', value)}
-                keyboardType="numeric"
-              />
-            </View>
-
-            {/* Energy Level */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>⚡ Energy Level</Text>
-              <View style={styles.energyLevelContainer}>
-                {energyLevels.map((level) => (
-                  <TouchableOpacity
-                    key={level}
-                    style={[
-                      styles.energyLevelButton,
-                      dogData.energyLevel === level && styles.selectedEnergyLevel,
-                    ]}
-                    onPress={() => updateField('energyLevel', level)}
-                  >
-                    <Text style={[
-                      styles.energyLevelText,
-                      dogData.energyLevel === level && styles.selectedEnergyLevelText
-                    ]}>
-                      {level}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Play Style */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>🎭 Play Style (Select multiple)</Text>
-              <View style={styles.playStyleContainer}>
-                {playStyles.map((style) => (
-                  <TouchableOpacity
-                    key={style}
-                    style={[
-                      styles.playStyleButton,
-                      dogData.playStyle.includes(style) && styles.selectedPlayStyle,
-                    ]}
-                    onPress={() => {
-                      const newPlayStyle = dogData.playStyle.includes(style)
-                        ? dogData.playStyle.filter(s => s !== style)
-                        : [...dogData.playStyle, style];
-                      updateField('playStyle', newPlayStyle);
-                    }}
-                  >
-                    <Text style={[
-                      styles.playStyleText,
-                      dogData.playStyle.includes(style) && styles.selectedPlayStyleText
-                    ]}>
-                      {style}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                >
+                  <Text style={[
+                    styles.playStyleText,
+                    dogData.playStyle.includes(style) && styles.selectedPlayStyleText
+                  ]}>
+                    {style}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         </View>
-      </ScrollView>
 
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveButtonText}>💾 Save Changes</Text>
-        </TouchableOpacity>
+        {/* Save Button */}
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+            <Text style={styles.saveButtonText}>💾 Save Changes</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Bottom padding */}
+        <View style={styles.bottomPadding} />
       </View>
-    </SafeAreaView>
+    </ScrollView>
   );
 }
 
@@ -329,8 +336,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F9FA',
   },
-  scrollView: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 100,
   },
   content: {
     padding: 20,
@@ -440,6 +448,7 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     padding: 20,
+    marginTop: 20,
   },
   saveButton: {
     backgroundColor: '#4A90E2',
@@ -584,5 +593,11 @@ const styles = StyleSheet.create({
   selectedEnergyLevelText: {
     fontWeight: 'bold',
     color: '#4A90E2',
+  },
+  bottomPadding: {
+    height: 100,
+    ...(Platform.OS === 'web' && {
+      height: 200, // Much larger padding for web
+    }),
   },
 });

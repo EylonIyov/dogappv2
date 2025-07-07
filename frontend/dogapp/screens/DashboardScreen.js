@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
@@ -64,57 +65,82 @@ export default function DashboardScreen({ navigation }) {
   };
 
   const deleteDog = async (dogId) => {
-    Alert.alert(
-      'Delete Dog Profile',
-      'Are you sure you want to delete this dog profile?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await DogService.deleteDog(dogId);
-              
-              if (result.success) {
-                // Remove from local state
-                setDogs(dogs.filter(dog => dog.id !== dogId));
-                Alert.alert('Success', 'Dog profile deleted successfully');
-              } else {
-                Alert.alert('Error', result.error || 'Failed to delete dog');
+    if (Platform.OS === 'web') {
+      // Web: use window.confirm to avoid blocking
+      const confirmed = window.confirm('Are you sure you want to delete this dog profile?');
+      if (!confirmed) return;
+      try {
+        const result = await DogService.deleteDog(dogId);
+        if (result.success) {
+          setDogs(dogs.filter(dog => dog.id !== dogId));
+          window.alert('Dog profile deleted successfully');
+        } else {
+          window.alert(result.error || 'Failed to delete dog');
+        }
+      } catch (error) {
+        console.error('Error deleting dog:', error);
+        window.alert('Failed to delete dog. Please try again.');
+      }
+    } else {
+      // Native: use Alert.alert for confirmation dialog
+      Alert.alert(
+        'Delete Dog Profile',
+        'Are you sure you want to delete this dog profile?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                const result = await DogService.deleteDog(dogId);
+                if (result.success) {
+                  setDogs(dogs.filter(dog => dog.id !== dogId));
+                  Alert.alert('Success', 'Dog profile deleted successfully');
+                } else {
+                  Alert.alert('Error', result.error || 'Failed to delete dog');
+                }
+              } catch (error) {
+                console.error('Error deleting dog:', error);
+                Alert.alert('Error', 'Failed to delete dog. Please try again.');
               }
-            } catch (error) {
-              console.error('Error deleting dog:', error);
-              Alert.alert('Error', 'Failed to delete dog. Please try again.');
-            }
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setShowMainMenu(false);
-              await logout();
-              // Navigation will happen automatically due to auth state change
-            } catch (error) {
-              console.error('Logout error:', error);
-              Alert.alert('Error', 'Failed to logout. Please try again.');
-            }
+    const performLogout = async () => {
+      try {
+        setShowMainMenu(false);
+        await logout();
+      } catch (error) {
+        console.error('Logout error:', error);
+        Alert.alert('Error', 'Failed to logout. Please try again.');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      // On web, we log out directly to avoid issues with the Alert component
+      // and provide a quicker user experience.
+      performLogout();
+    } else {
+      // On native, we show a confirmation dialog.
+      Alert.alert(
+        'Logout',
+        'Are you sure you want to logout?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Logout',
+            style: 'destructive',
+            onPress: performLogout,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const DogCard = ({ dog }) => (
