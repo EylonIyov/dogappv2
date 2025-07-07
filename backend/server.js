@@ -11,9 +11,23 @@ const { uploadToS3, validateImageFile } = require('./dogUploadPicture');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Environment check
+const isProduction = process.env.NODE_ENV === 'production';
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: isProduction ? process.env.FRONTEND_URL : '*',
+  credentials: true
+}));
 app.use(express.json());
+
+// Add request logging for production
+if (isProduction) {
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    next();
+  });
+}
 
 // Configure multer for file uploads
 const upload = multer({
