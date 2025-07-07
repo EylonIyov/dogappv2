@@ -60,7 +60,24 @@ export default function AddDogScreen({ navigation }) {
 
   useEffect(() => {
     fetchBreeds();
+    requestPermissions();
   }, []);
+
+  // Request camera/media library permissions
+  const requestPermissions = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'We need access to your photo library to select dog pictures. Please enable this in your device settings.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Permission request error:', error);
+    }
+  };
 
   // Check if cache is valid
   const isCacheValid = () => {
@@ -369,16 +386,28 @@ export default function AddDogScreen({ navigation }) {
               <TouchableOpacity
                 style={styles.photoUploadContainer}
                 onPress={async () => {
-                  // Open image picker
-                  const result = await ImagePicker.launchImageLibraryAsync({
-                    mediaTypes: ImagePicker.MediaType.Images,
-                    allowsEditing: true,
-                    aspect: [4, 3],
-                    quality: 1,
-                  });
+                  try {
+                    console.log('Opening image picker...');
+                    
+                    // Open image picker
+                    const result = await ImagePicker.launchImageLibraryAsync({
+                      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                      allowsEditing: true,
+                      aspect: [4, 3],
+                      quality: 0.8, // Reduce quality slightly for better performance
+                    });
 
-                  if (!result.canceled) {
-                    setSelectedPhoto(result.assets[0]);
+                    console.log('Image picker result:', result);
+
+                    if (!result.canceled && result.assets && result.assets.length > 0) {
+                      console.log('Photo selected:', result.assets[0]);
+                      setSelectedPhoto(result.assets[0]);
+                    } else {
+                      console.log('Photo selection was canceled or no assets returned');
+                    }
+                  } catch (error) {
+                    console.error('Error opening image picker:', error);
+                    Alert.alert('Error', 'Failed to open photo library. Please try again.');
                   }
                 }}
               >
@@ -389,7 +418,7 @@ export default function AddDogScreen({ navigation }) {
                   />
                 ) : (
                   <View style={styles.photoPlaceholder}>
-                    <Text style={styles.photoPlaceholderText}>Tap to select a photo</Text>
+                    <Text style={styles.photoPlaceholderText}>📷 Tap to select a photo</Text>
                   </View>
                 )}
               </TouchableOpacity>

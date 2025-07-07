@@ -36,15 +36,27 @@ export default function DashboardScreen({ navigation }) {
   const loadDogs = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Loading dogs from API...');
       const result = await DogService.getDogs();
       
       if (result.success) {
+        console.log('✅ Dogs loaded successfully:', result.dogs.length, 'dogs found');
+        
+        // Log photo URLs for each dog
+        result.dogs.forEach((dog, index) => {
+          console.log(`🐕 Dog ${index + 1}: ${dog.name}`);
+          console.log(`   - Photo URL: ${dog.photo_url || 'No photo'}`);
+          console.log(`   - Has photo_url field: ${dog.photo_url !== undefined}`);
+          console.log(`   - Photo URL length: ${dog.photo_url ? dog.photo_url.length : 0}`);
+        });
+        
         setDogs(result.dogs);
       } else {
+        console.error('❌ Failed to load dogs:', result.error);
         Alert.alert('Error', result.error || 'Failed to load dogs');
       }
     } catch (error) {
-      console.error('Error loading dogs:', error);
+      console.error('💥 Error loading dogs:', error);
       Alert.alert('Error', 'Failed to load dogs. Please try again.');
     } finally {
       setLoading(false);
@@ -119,6 +131,12 @@ export default function DashboardScreen({ navigation }) {
             cachePolicy="memory-disk"
             placeholder="🐕"
             transition={200}
+            onError={(error) => {
+              console.log('Image loading error for dog:', dog.name, 'URL:', dog.photo_url, 'Error:', error);
+            }}
+            onLoad={() => {
+              console.log('Image loaded successfully for dog:', dog.name, 'URL:', dog.photo_url);
+            }}
           />
         ) : (
           <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>

@@ -499,31 +499,46 @@ app.get('/api/dogs/:dogId', authenticateToken, async (req, res) => {
 app.post('/api/dogs/:dogId/photo', authenticateToken, upload.single('photo'), async (req, res) => {
   try {
     const { dogId } = req.params;
+    console.log('📸 Photo upload request received for dog ID:', dogId);
 
     // Find the dog and verify ownership
     const dogDoc = await dogsCollection.doc(dogId).get();
     
     if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
+      console.log('❌ Dog not found or unauthorized access for dog ID:', dogId);
       return res.status(404).json({ error: 'Dog not found or not authorized' });
     }
 
     // Validate file upload
     if (!req.file) {
+      console.log('❌ No photo file uploaded');
       return res.status(400).json({ error: 'No photo file uploaded' });
     }
+
+    console.log('📁 File received:', {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    });
 
     // Validate image file
     const validation = validateImageFile(req.file);
     if (!validation.valid) {
+      console.log('❌ File validation failed:', validation.error);
       return res.status(400).json({ error: validation.error });
     }
+
+    console.log('✅ File validation passed, uploading to S3...');
 
     // Upload to S3
     const uploadResult = await uploadToS3(req.file, req.user.userId);
     
     if (!uploadResult.success) {
+      console.log('❌ S3 upload failed:', uploadResult.error);
       return res.status(500).json({ error: uploadResult.error });
     }
+
+    console.log('✅ S3 upload successful, photo URL:', uploadResult.photoUrl);
 
     // Update the dog document with the new photo URL
     await dogsCollection.doc(dogId).update({
@@ -531,13 +546,15 @@ app.post('/api/dogs/:dogId/photo', authenticateToken, upload.single('photo'), as
       updated_at: serverTimestamp()
     });
 
+    console.log('✅ Firestore updated with photo URL for dog:', dogId);
+
     res.json({
       message: 'Photo uploaded successfully',
       photoUrl: uploadResult.photoUrl
     });
 
   } catch (error) {
-    console.error('Upload photo error:', error);
+    console.error('💥 Upload photo error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -1,4 +1,5 @@
-const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const crypto = require('crypto');
 
 const s3Client = new S3Client({
@@ -20,7 +21,7 @@ function generateUniqueFilename(originalName, userId) {
   return `${BUCKET_PATH}/${userId}/${timestamp}-${randomString}.${extension}`;
 }
 
-// Upload function
+// Upload function with pre-signed URL generation
 async function uploadToS3(file, userId) {
   try {
     const key = generateUniqueFilename(file.originalname, userId);
@@ -30,12 +31,17 @@ async function uploadToS3(file, userId) {
       Key: key,
       Body: file.buffer,
       ContentType: file.mimetype
-      // Remove ACL since the bucket doesn't allow ACLs
-      // ACL: 'public-read' 
     });
     
     const result = await s3Client.send(command);
-    const photoUrl = `https://${BUCKET_NAME}.s3.amazonaws.com/${key}`;
+    
+    // Generate a pre-signed URL for reading the image (valid for 7 days)
+    const getCommand = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key
+    });
+    
+    const photoUrl = await getSignedUrl(s3Client, getCommand, { expiresIn: 604800 }); // 7 days
     
     return {
       success: true,
