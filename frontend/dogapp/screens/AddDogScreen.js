@@ -18,15 +18,11 @@ export default function AddDogScreen({ navigation }) {
     name: '',
     breed: '',
     age: '',
-    color: '',
-    gender: '',
+    energyLevel: '',
+    playStyle: [],
     emoji: '🐕',
-    medicalNotes: '',
-    favoriteActivities: '',
-    specialNeeds: '',
   });
   const [loading, setLoading] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState(false);
   
   // Auto-complete state
   const [allBreeds, setAllBreeds] = useState([]);
@@ -40,11 +36,22 @@ export default function AddDogScreen({ navigation }) {
 
   const dogEmojis = ['🐕', '🐶', '🦮', '🐕‍🦺', '🐩', '🐾'];
   
-  const dogColors = [
-    'Black', 'Brown', 'White', 'Golden', 'Cream', 'Gray', 'Silver',
-    'Red', 'Blue', 'Chocolate', 'Tan', 'Sable', 'Brindle', 'Merle',
-    'Parti-color', 'Tricolor', 'Black and Tan', 'Black and White',
-    'Brown and White', 'Other'
+  const energyLevels = [
+    "Low - Calm and relaxed",
+    "Moderate - Balanced energy", 
+    "High - Very active and energetic",
+    "Very High - Extremely active"
+  ];
+
+  const playStyles = [
+    "Wrestle",
+    "Chase", 
+    "Fetch",
+    "Tug of War",
+    "Hide and Seek",
+    "Gentle Play",
+    "Solo Play",
+    "Social Play"
   ];
 
   useEffect(() => {
@@ -133,9 +140,9 @@ export default function AddDogScreen({ navigation }) {
   };
 
   const handleSave = async () => {
-    // Validation
+    // Validation - only check required fields
     if (!dogData.name.trim() || !dogData.breed.trim() || !dogData.age.toString().trim()) {
-      Alert.alert('Missing Information', 'Please fill in at least the name, breed, and age fields.');
+      Alert.alert('Missing Information', 'Please fill in the name, breed, and age fields.');
       return;
     }
 
@@ -148,19 +155,14 @@ export default function AddDogScreen({ navigation }) {
 
     setLoading(true);
     try {
-      // Prepare data for API
+      // Prepare data for API with new structure
       const dogPayload = {
         name: dogData.name.trim(),
         breed: dogData.breed.trim(),
         age: ageNumber,
+        energyLevel: dogData.energyLevel,
+        playStyle: dogData.playStyle,
         emoji: dogData.emoji,
-        notes: [
-          dogData.color ? `Color: ${dogData.color}` : '',
-          dogData.gender ? `Gender: ${dogData.gender}` : '',
-          dogData.favoriteActivities ? `Favorite Activities: ${dogData.favoriteActivities}` : '',
-          dogData.medicalNotes ? `Medical Notes: ${dogData.medicalNotes}` : '',
-          dogData.specialNeeds ? `Special Needs: ${dogData.specialNeeds}` : '',
-        ].filter(note => note).join('\n'),
       };
 
       const result = await DogService.addDog(dogPayload);
@@ -195,44 +197,6 @@ export default function AddDogScreen({ navigation }) {
       setDogData(prev => ({ ...prev, [field]: value }));
     }
   };
-
-  const renderColorPicker = () => (
-    <Modal visible={showColorPicker} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Select Color</Text>
-            <TouchableOpacity onPress={() => setShowColorPicker(false)}>
-              <Text style={styles.modalCloseButton}>✕</Text>
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={dogColors}
-            keyExtractor={(item) => item}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.pickerItem,
-                  dogData.color === item && styles.selectedPickerItem
-                ]}
-                onPress={() => {
-                  updateField('color', item);
-                  setShowColorPicker(false);
-                }}
-              >
-                <Text style={[
-                  styles.pickerItemText,
-                  dogData.color === item && styles.selectedPickerItemText
-                ]}>
-                  {item}
-                </Text>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-      </View>
-    </Modal>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -313,94 +277,68 @@ export default function AddDogScreen({ navigation }) {
               </View>
             </View>
 
-            <View style={styles.row}>
-              <View style={[styles.inputGroup, styles.halfWidth]}>
-                <Text style={styles.label}>🎂 Age (years) *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., 2.5"
-                  value={dogData.age}
-                  onChangeText={(value) => updateField('age', value)}
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={[styles.inputGroup, styles.halfWidth]}>
-                <Text style={styles.label}>🎨 Color</Text>
-                <TouchableOpacity
-                  style={styles.dropdownButton}
-                  onPress={() => setShowColorPicker(true)}
-                >
-                  <Text style={[
-                    styles.dropdownText,
-                    !dogData.color && styles.placeholderText
-                  ]}>
-                    {dogData.color || 'Select color'}
-                  </Text>
-                  <Text style={styles.dropdownArrow}>▼</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>⚥ Gender</Text>
-              <View style={styles.genderContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.genderButton,
-                    dogData.gender === 'Male' && styles.selectedGender,
-                  ]}
-                  onPress={() => updateField('gender', 'Male')}
-                >
-                  <Text style={styles.genderText}>♂️ Male</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.genderButton,
-                    dogData.gender === 'Female' && styles.selectedGender,
-                  ]}
-                  onPress={() => updateField('gender', 'Female')}
-                >
-                  <Text style={styles.genderText}>♀️ Female</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Additional Information */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>🏃 Favorite Activities</Text>
+              <Text style={styles.label}>🎂 Age (years) *</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="e.g., Playing fetch, Swimming, Long walks"
-                value={dogData.favoriteActivities}
-                onChangeText={(value) => updateField('favoriteActivities', value)}
-                multiline
-                numberOfLines={3}
+                style={styles.input}
+                placeholder="e.g., 2.5"
+                value={dogData.age}
+                onChangeText={(value) => updateField('age', value)}
+                keyboardType="numeric"
               />
             </View>
 
+            {/* Energy Level */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>🏥 Medical Notes</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Any medical conditions, allergies, or special care instructions"
-                value={dogData.medicalNotes}
-                onChangeText={(value) => updateField('medicalNotes', value)}
-                multiline
-                numberOfLines={3}
-              />
+              <Text style={styles.label}>⚡ Energy Level</Text>
+              <View style={styles.energyLevelContainer}>
+                {energyLevels.map((level) => (
+                  <TouchableOpacity
+                    key={level}
+                    style={[
+                      styles.energyLevelButton,
+                      dogData.energyLevel === level && styles.selectedEnergyLevel,
+                    ]}
+                    onPress={() => updateField('energyLevel', level)}
+                  >
+                    <Text style={[
+                      styles.energyLevelText,
+                      dogData.energyLevel === level && styles.selectedEnergyLevelText
+                    ]}>
+                      {level}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
+            {/* Play Style */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>⭐ Special Needs</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Any special requirements or behavioral notes"
-                value={dogData.specialNeeds}
-                onChangeText={(value) => updateField('specialNeeds', value)}
-                multiline
-                numberOfLines={3}
-              />
+              <Text style={styles.label}>🎭 Play Style (Select multiple)</Text>
+              <View style={styles.playStyleContainer}>
+                {playStyles.map((style) => (
+                  <TouchableOpacity
+                    key={style}
+                    style={[
+                      styles.playStyleButton,
+                      dogData.playStyle.includes(style) && styles.selectedPlayStyle,
+                    ]}
+                    onPress={() => {
+                      const newPlayStyle = dogData.playStyle.includes(style)
+                        ? dogData.playStyle.filter(s => s !== style)
+                        : [...dogData.playStyle, style];
+                      updateField('playStyle', newPlayStyle);
+                    }}
+                  >
+                    <Text style={[
+                      styles.playStyleText,
+                      dogData.playStyle.includes(style) && styles.selectedPlayStyleText
+                    ]}>
+                      {style}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
         </View>
@@ -417,8 +355,6 @@ export default function AddDogScreen({ navigation }) {
           </Text>
         </TouchableOpacity>
       </View>
-
-      {renderColorPicker()}
     </SafeAreaView>
   );
 }
@@ -693,5 +629,60 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
     backgroundColor: '#FFFFFF',
+  },
+  energyLevelContainer: {
+    gap: 8,
+  },
+  energyLevelButton: {
+    backgroundColor: '#F8F9FA',
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 15,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  selectedEnergyLevel: {
+    borderColor: '#4A90E2',
+    backgroundColor: '#E8F4FD',
+  },
+  energyLevelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+  },
+  selectedEnergyLevelText: {
+    color: '#4A90E2',
+    fontWeight: 'bold',
+  },
+  playStyleContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  playStyleButton: {
+    backgroundColor: '#F8F9FA',
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+    minWidth: '48%',
+  },
+  selectedPlayStyle: {
+    borderColor: '#4A90E2',
+    backgroundColor: '#E8F4FD',
+  },
+  playStyleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+  },
+  selectedPlayStyleText: {
+    color: '#4A90E2',
+    fontWeight: 'bold',
   },
 });

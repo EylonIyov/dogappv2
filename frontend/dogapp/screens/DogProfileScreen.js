@@ -83,10 +83,22 @@ export default function DogProfileScreen({ route, navigation }) {
           <Text style={styles.sectionTitle}>Basic Information</Text>
           <View style={styles.infoGrid}>
             <InfoCard icon="🎂" title="Age" value={dog.age ? `${dog.age} years old` : null} />
-            <InfoCard icon="🎨" title="Color" value={dog.color} />
-            <InfoCard icon="⚥" title="Gender" value={dog.gender} />
+            <InfoCard icon="⚡" title="Energy Level" value={dog.energyLevel} />
           </View>
         </View>
+
+        {/* Play Style Section */}
+        {dog.playStyle && dog.playStyle.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Play Style</Text>
+            <View style={styles.textCard}>
+              <Text style={styles.cardIcon}>🎭</Text>
+              <Text style={styles.cardText}>
+                {Array.isArray(dog.playStyle) ? dog.playStyle.join(', ') : dog.playStyle}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Activities Section */}
         {dog.favoriteActivities && (

@@ -17,12 +17,9 @@ export default function EditDogScreen({ route, navigation }) {
     name: dog.name || '',
     breed: dog.breed || '',
     age: dog.age || '',
-    color: dog.color || '',
-    gender: dog.gender || '',
+    energyLevel: dog.energyLevel || '',
+    playStyle: dog.playStyle || [],
     emoji: dog.emoji || '🐕',
-    medicalNotes: dog.medicalNotes || '',
-    favoriteActivities: dog.favoriteActivities || '',
-    specialNeeds: dog.specialNeeds || '',
   });
 
   // Auto-complete state
@@ -36,6 +33,24 @@ export default function EditDogScreen({ route, navigation }) {
   const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
 
   const dogEmojis = ['🐕', '🐶', '🦮', '🐕‍🦺', '🐩', '🐾'];
+
+  const energyLevels = [
+    "Low - Calm and relaxed",
+    "Moderate - Balanced energy", 
+    "High - Very active and energetic",
+    "Very High - Extremely active"
+  ];
+
+  const playStyles = [
+    "Wrestle",
+    "Chase", 
+    "Fetch",
+    "Tug of War",
+    "Hide and Seek",
+    "Gentle Play",
+    "Solo Play",
+    "Social Play"
+  ];
 
   useEffect(() => {
     fetchBreeds();
@@ -228,88 +243,68 @@ export default function EditDogScreen({ route, navigation }) {
               </View>
             </View>
 
-            <View style={styles.row}>
-              <View style={[styles.inputGroup, styles.halfWidth]}>
-                <Text style={styles.label}>🎂 Age *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Years"
-                  value={dogData.age}
-                  onChangeText={(value) => updateField('age', value)}
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={[styles.inputGroup, styles.halfWidth]}>
-                <Text style={styles.label}>🎨 Color</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., Brown, Black"
-                  value={dogData.color}
-                  onChangeText={(value) => updateField('color', value)}
-                />
-              </View>
-            </View>
-
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>⚥ Gender</Text>
-              <View style={styles.genderContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.genderButton,
-                    dogData.gender === 'Male' && styles.selectedGender,
-                  ]}
-                  onPress={() => updateField('gender', 'Male')}
-                >
-                  <Text style={styles.genderText}>♂️ Male</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.genderButton,
-                    dogData.gender === 'Female' && styles.selectedGender,
-                  ]}
-                  onPress={() => updateField('gender', 'Female')}
-                >
-                  <Text style={styles.genderText}>♀️ Female</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Additional Information */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>🏃 Favorite Activities</Text>
+              <Text style={styles.label}>🎂 Age (years) *</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="e.g., Playing fetch, Swimming, Long walks"
-                value={dogData.favoriteActivities}
-                onChangeText={(value) => updateField('favoriteActivities', value)}
-                multiline
-                numberOfLines={3}
+                style={styles.input}
+                placeholder="e.g., 2.5"
+                value={dogData.age}
+                onChangeText={(value) => updateField('age', value)}
+                keyboardType="numeric"
               />
             </View>
 
+            {/* Energy Level */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>🏥 Medical Notes</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Any medical conditions, allergies, or special care instructions"
-                value={dogData.medicalNotes}
-                onChangeText={(value) => updateField('medicalNotes', value)}
-                multiline
-                numberOfLines={3}
-              />
+              <Text style={styles.label}>⚡ Energy Level</Text>
+              <View style={styles.energyLevelContainer}>
+                {energyLevels.map((level) => (
+                  <TouchableOpacity
+                    key={level}
+                    style={[
+                      styles.energyLevelButton,
+                      dogData.energyLevel === level && styles.selectedEnergyLevel,
+                    ]}
+                    onPress={() => updateField('energyLevel', level)}
+                  >
+                    <Text style={[
+                      styles.energyLevelText,
+                      dogData.energyLevel === level && styles.selectedEnergyLevelText
+                    ]}>
+                      {level}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
+            {/* Play Style */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>⭐ Special Needs</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Any special requirements or behavioral notes"
-                value={dogData.specialNeeds}
-                onChangeText={(value) => updateField('specialNeeds', value)}
-                multiline
-                numberOfLines={3}
-              />
+              <Text style={styles.label}>🎭 Play Style (Select multiple)</Text>
+              <View style={styles.playStyleContainer}>
+                {playStyles.map((style) => (
+                  <TouchableOpacity
+                    key={style}
+                    style={[
+                      styles.playStyleButton,
+                      dogData.playStyle.includes(style) && styles.selectedPlayStyle,
+                    ]}
+                    onPress={() => {
+                      const newPlayStyle = dogData.playStyle.includes(style)
+                        ? dogData.playStyle.filter(s => s !== style)
+                        : [...dogData.playStyle, style];
+                      updateField('playStyle', newPlayStyle);
+                    }}
+                  >
+                    <Text style={[
+                      styles.playStyleText,
+                      dogData.playStyle.includes(style) && styles.selectedPlayStyleText
+                    ]}>
+                      {style}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
         </View>
@@ -522,5 +517,67 @@ const styles = StyleSheet.create({
   suggestionText: {
     fontSize: 16,
     color: '#333',
+  },
+  pickerContainer: {
+    backgroundColor: '#F8F9FA',
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 50,
+    width: '100%',
+    color: '#333',
+  },
+  playStyleContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  playStyleButton: {
+    flexBasis: '48%',
+    backgroundColor: '#F8F9FA',
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  selectedPlayStyle: {
+    borderColor: '#4A90E2',
+    backgroundColor: '#E8F4FD',
+  },
+  playStyleText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  energyLevelContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  energyLevelButton: {
+    flexBasis: '48%',
+    backgroundColor: '#F8F9FA',
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  selectedEnergyLevel: {
+    borderColor: '#4A90E2',
+    backgroundColor: '#E8F4FD',
+  },
+  energyLevelText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  selectedEnergyLevelText: {
+    fontWeight: 'bold',
+    color: '#4A90E2',
   },
 });

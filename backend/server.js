@@ -18,7 +18,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-t
 
 // Firestore collections
 const usersCollection = db.collection('test_users');
-const dogsCollection = db.collection('test_dogs'); // Changed from 'dogs' to 'test_dogs'
+const dogsCollection = db.collection('dogs'); // Changed to match your actual collection name
 
 // Middleware to verify JWT token
 const authenticateToken = (req, res, next) => {
@@ -329,7 +329,7 @@ app.get('/api/dog-breeds', async (req, res) => {
 // Get all dogs for the authenticated user
 app.get('/api/dogs', authenticateToken, async (req, res) => {
   try {
-    const dogsSnapshot = await dogsCollection.where('userId', '==', req.user.userId).get();
+    const dogsSnapshot = await dogsCollection.where('owner_id', '==', req.user.userId).get(); // Changed from userId to owner_id
     
     const userDogs = [];
     dogsSnapshot.forEach(doc => {
@@ -349,25 +349,27 @@ app.get('/api/dogs', authenticateToken, async (req, res) => {
 // Add a new dog for the authenticated user
 app.post('/api/dogs', authenticateToken, async (req, res) => {
   try {
-    const { name, breed, age, emoji, weight, birthday, notes } = req.body;
+    const { name, breed, age, energyLevel, playStyle, emoji } = req.body;
 
     // Validation
     if (!name || !breed || !age) {
       return res.status(400).json({ error: 'Name, breed, and age are required' });
     }
 
-    // Create new dog in Firestore
+    // Create new dog in Firestore matching your schema
     const dogDoc = await dogsCollection.add({
-      userId: req.user.userId, // Associate with authenticated user
+      owner_id: req.user.userId, // Changed from userId to owner_id to match schema
       name,
       breed,
-      age: parseInt(age),
-      emoji: emoji || '🐕',
-      weight: weight || null,
-      birthday: birthday || null,
-      notes: notes || '',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      age: parseFloat(age), // Allow decimals for age
+      energy_level: energyLevel || '', // Changed from energyLevel to energy_level
+      play_style: playStyle || [], // Changed from playStyle to play_style (array)
+      size: '', // Add missing schema fields with defaults
+      photo_url: '', 
+      friends: [],
+      gets_along_with: [],
+      created_at: serverTimestamp(), // Changed from createdAt to created_at
+      updated_at: serverTimestamp()  // Changed from updatedAt to updated_at
     });
 
     // Get the created dog data
@@ -392,27 +394,26 @@ app.post('/api/dogs', authenticateToken, async (req, res) => {
 app.put('/api/dogs/:dogId', authenticateToken, async (req, res) => {
   try {
     const { dogId } = req.params;
-    const { name, breed, age, emoji, weight, birthday, notes } = req.body;
+    const { name, breed, age, energyLevel, playStyle, emoji } = req.body;
 
     // Find the dog and verify ownership
     const dogDoc = await dogsCollection.doc(dogId).get();
     
-    if (!dogDoc.exists || dogDoc.data().userId !== req.user.userId) {
+    if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) { // Changed userId to owner_id
       return res.status(404).json({ error: 'Dog not found or not authorized' });
     }
 
-    // Prepare update data
+    // Prepare update data matching your schema
     const updateData = {
-      updatedAt: serverTimestamp()
+      updated_at: serverTimestamp() // Changed updatedAt to updated_at
     };
 
     if (name !== undefined) updateData.name = name;
     if (breed !== undefined) updateData.breed = breed;
-    if (age !== undefined) updateData.age = parseInt(age);
+    if (age !== undefined) updateData.age = parseFloat(age);
+    if (energyLevel !== undefined) updateData.energy_level = energyLevel; // Changed to energy_level
+    if (playStyle !== undefined) updateData.play_style = playStyle; // Changed to play_style
     if (emoji !== undefined) updateData.emoji = emoji;
-    if (weight !== undefined) updateData.weight = weight;
-    if (birthday !== undefined) updateData.birthday = birthday;
-    if (notes !== undefined) updateData.notes = notes;
 
     // Update the dog
     await dogsCollection.doc(dogId).update(updateData);
@@ -443,7 +444,7 @@ app.delete('/api/dogs/:dogId', authenticateToken, async (req, res) => {
     // Find the dog and verify ownership
     const dogDoc = await dogsCollection.doc(dogId).get();
     
-    if (!dogDoc.exists || dogDoc.data().userId !== req.user.userId) {
+    if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) { // Changed userId to owner_id
       return res.status(404).json({ error: 'Dog not found or not authorized' });
     }
 
@@ -465,7 +466,7 @@ app.get('/api/dogs/:dogId', authenticateToken, async (req, res) => {
 
     const dogDoc = await dogsCollection.doc(dogId).get();
     
-    if (!dogDoc.exists || dogDoc.data().userId !== req.user.userId) {
+    if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) { // Changed userId to owner_id
       return res.status(404).json({ error: 'Dog not found or not authorized' });
     }
 
