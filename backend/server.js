@@ -3,8 +3,10 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { db, serverTimestamp } = require('./firebase-config');
+const { uploadToS3, validateImageFile } = require('./dogUploadPicture');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +14,14 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Configure multer for file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  }
+});
 
 // JWT Secret (in production, use environment variable)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
@@ -485,6 +495,53 @@ app.get('/api/dogs/:dogId', authenticateToken, async (req, res) => {
   }
 });
 
+// Upload dog photo (for authenticated users)
+app.post('/api/dogs/:dogId/photo', authenticateToken, upload.single('photo'), async (req, res) => {
+  try {
+    const { dogId } = req.params;
+
+    // Find the dog and verify ownership
+    const dogDoc = await dogsCollection.doc(dogId).get();
+    
+    if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
+      return res.status(404).json({ error: 'Dog not found or not authorized' });
+    }
+
+    // Validate file upload
+    if (!req.file) {
+      return res.status(400).json({ error: 'No photo file uploaded' });
+    }
+
+    // Validate image file
+    const validation = validateImageFile(req.file);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    // Upload to S3
+    const uploadResult = await uploadToS3(req.file, req.user.userId);
+    
+    if (!uploadResult.success) {
+      return res.status(500).json({ error: uploadResult.error });
+    }
+
+    // Update the dog document with the new photo URL
+    await dogsCollection.doc(dogId).update({
+      photo_url: uploadResult.photoUrl,
+      updated_at: serverTimestamp()
+    });
+
+    res.json({
+      message: 'Photo uploaded successfully',
+      photoUrl: uploadResult.photoUrl
+    });
+
+  } catch (error) {
+    console.error('Upload photo error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🐕 Dog App Backend running on port ${PORT}`);
@@ -501,6 +558,7 @@ app.listen(PORT, () => {
   console.log(`  GET    http://localhost:${PORT}/api/dogs/:dogId`);
   console.log(`  PUT    http://localhost:${PORT}/api/dogs/:dogId`);
   console.log(`  DELETE http://localhost:${PORT}/api/dogs/:dogId`);
+  console.log(`  POST   http://localhost:${PORT}/api/dogs/:dogId/photo`);
   console.log(`BREEDS:`);
   console.log(`  GET    http://localhost:${PORT}/api/dog-breeds`);
 });

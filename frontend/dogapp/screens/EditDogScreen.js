@@ -9,16 +9,16 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import DogService from '../services/DogService';
 
 export default function EditDogScreen({ route, navigation }) {
   const { dog } = route.params;
   const [dogData, setDogData] = useState({
     name: dog.name || '',
     breed: dog.breed || '',
-    age: dog.age || '',
-    energyLevel: dog.energyLevel || '',
-    playStyle: dog.playStyle || [],
+    age: dog.age ? dog.age.toString() : '', // Convert age to string for TextInput
+    energyLevel: dog.energy_level || dog.energyLevel || '', // Handle both snake_case and camelCase
+    playStyle: dog.play_style || dog.playStyle || [], // Handle both snake_case and camelCase
     emoji: dog.emoji || '🐕',
   });
 
@@ -119,41 +119,46 @@ export default function EditDogScreen({ route, navigation }) {
 
   const handleSave = async () => {
     // Validation
-    if (!dogData.name.trim() || !dogData.breed.trim() || !dogData.age.trim()) {
+    if (!dogData.name.trim() || !dogData.breed.trim() || !dogData.age.toString().trim()) {
       Alert.alert('Missing Information', 'Please fill in at least the name, breed, and age fields.');
       return;
     }
 
+    // Validate age is a real number
+    const ageNumber = parseFloat(dogData.age);
+    if (isNaN(ageNumber) || ageNumber <= 0 || ageNumber > 30) {
+      Alert.alert('Invalid Age', 'Please enter a valid age between 0 and 30 years.');
+      return;
+    }
+
     try {
-      // Load existing dogs
-      const existingDogs = await AsyncStorage.getItem('dogs');
-      const dogs = existingDogs ? JSON.parse(existingDogs) : [];
+      // Prepare data for API with new structure
+      const dogPayload = {
+        name: dogData.name.trim(),
+        breed: dogData.breed.trim(),
+        age: ageNumber,
+        energyLevel: dogData.energyLevel,
+        playStyle: dogData.playStyle,
+        emoji: dogData.emoji,
+      };
 
-      // Find and update the dog
-      const updatedDogs = dogs.map(d => {
-        if (d.id === dog.id) {
-          return {
-            ...d,
-            ...dogData,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return d;
-      });
+      // Use DogService to update dog in Firestore
+      const result = await DogService.updateDog(dog.id, dogPayload);
 
-      // Save to storage
-      await AsyncStorage.setItem('dogs', JSON.stringify(updatedDogs));
-
-      Alert.alert(
-        'Success! 🎉',
-        `${dogData.name}'s profile has been updated!`,
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
-      );
+      if (result.success) {
+        Alert.alert(
+          'Success! 🎉',
+          `${dogData.name}'s profile has been updated!`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to update dog. Please try again.');
+      }
     } catch (error) {
       console.error('Error updating dog:', error);
       Alert.alert('Error', 'Failed to update dog profile. Please try again.');

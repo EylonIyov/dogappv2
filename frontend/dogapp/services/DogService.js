@@ -152,6 +152,44 @@ class DogService {
       return { success: false, error: 'Network error. Please try again.' };
     }
   }
+
+  // Upload a dog photo
+  async uploadDogPhoto(dogId, photoUri) {
+    try {
+      const token = await this.getAuthToken();
+      if (!token) {
+        throw new Error('No auth token found');
+      }
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('photo', {
+        uri: photoUri,
+        type: 'image/jpeg',
+        name: 'dog-photo.jpg',
+      });
+
+      const response = await fetch(`${API_BASE_URL}/dogs/${dogId}/photo`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        return { success: true, photoUrl: data.photoUrl };
+      } else {
+        return { success: false, error: data.error };
+      }
+    } catch (error) {
+      console.error('Upload photo error:', error);
+      return { success: false, error: 'Network error. Please try again.' };
+    }
+  }
 }
 
 export default new DogService();

@@ -9,6 +9,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.842.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -16,6 +17,7 @@
     "firebase": "^11.10.0",
     "firebase-admin": "^11.11.1",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.1",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {

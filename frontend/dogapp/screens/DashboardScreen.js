@@ -9,6 +9,7 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import DogService from '../services/DogService';
@@ -110,7 +111,18 @@ export default function DashboardScreen({ navigation }) {
       onPress={() => navigation.navigate('DogProfile', { dog })}
     >
       <View style={styles.dogHeader}>
-        <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+        {dog.photo_url && dog.photo_url !== '' ? (
+          <Image
+            source={{ uri: dog.photo_url }}
+            style={styles.dogPhoto}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            placeholder="🐕"
+            transition={200}
+          />
+        ) : (
+          <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+        )}
         <View style={styles.dogInfo}>
           <Text style={styles.dogName}>{dog.name}</Text>
           <Text style={styles.dogBreed}>{dog.breed}</Text>
@@ -360,6 +372,12 @@ const styles = StyleSheet.create({
   },
   dogEmoji: {
     fontSize: 50,
+    marginRight: 15,
+  },
+  dogPhoto: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     marginRight: 15,
   },
   dogInfo: {

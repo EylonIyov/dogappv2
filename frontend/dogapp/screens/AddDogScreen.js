@@ -10,7 +10,9 @@ import {
   Alert,
   Modal,
   FlatList,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import DogService from '../services/DogService';
 
 export default function AddDogScreen({ navigation }) {
@@ -23,6 +25,8 @@ export default function AddDogScreen({ navigation }) {
     emoji: '🐕',
   });
   const [loading, setLoading] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   
   // Auto-complete state
   const [allBreeds, setAllBreeds] = useState([]);
@@ -165,19 +169,36 @@ export default function AddDogScreen({ navigation }) {
         emoji: dogData.emoji,
       };
 
+      // First create the dog
       const result = await DogService.addDog(dogPayload);
 
       if (result.success) {
-        Alert.alert(
-          'Success! 🎉',
-          `${dogData.name} has been added to your pack!`,
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]
-        );
+        let photoUploadSuccess = true;
+        
+        // If a photo was selected, upload it
+        if (selectedPhoto) {
+          setUploadingPhoto(true);
+          const photoResult = await DogService.uploadDogPhoto(result.dog.id, selectedPhoto.uri);
+          
+          if (!photoResult.success) {
+            console.warn('Photo upload failed:', photoResult.error);
+            photoUploadSuccess = false;
+          }
+          setUploadingPhoto(false);
+        }
+
+        const successMessage = selectedPhoto && photoUploadSuccess 
+          ? `${dogData.name} has been added to your pack with photo!`
+          : selectedPhoto && !photoUploadSuccess
+          ? `${dogData.name} has been added to your pack, but photo upload failed.`
+          : `${dogData.name} has been added to your pack!`;
+
+        Alert.alert('Success! 🎉', successMessage, [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]);
       } else {
         Alert.alert('Error', result.error || 'Failed to add dog. Please try again.');
       }
@@ -186,6 +207,7 @@ export default function AddDogScreen({ navigation }) {
       Alert.alert('Error', 'Failed to save dog profile. Please try again.');
     } finally {
       setLoading(false);
+      setUploadingPhoto(false);
     }
   };
 
@@ -340,6 +362,50 @@ export default function AddDogScreen({ navigation }) {
                 ))}
               </View>
             </View>
+
+            {/* Photo Upload - New Section */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>📸 Dog's Photo</Text>
+              <TouchableOpacity
+                style={styles.photoUploadContainer}
+                onPress={async () => {
+                  // Open image picker
+                  const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaType.Images,
+                    allowsEditing: true,
+                    aspect: [4, 3],
+                    quality: 1,
+                  });
+
+                  if (!result.canceled) {
+                    setSelectedPhoto(result.assets[0]);
+                  }
+                }}
+              >
+                {selectedPhoto ? (
+                  <Image
+                    source={{ uri: selectedPhoto.uri }}
+                    style={styles.selectedPhoto}
+                  />
+                ) : (
+                  <View style={styles.photoPlaceholder}>
+                    <Text style={styles.photoPlaceholderText}>Tap to select a photo</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {selectedPhoto && (
+                <TouchableOpacity
+                  style={styles.removePhotoButton}
+                  onPress={() => setSelectedPhoto(null)}
+                >
+                  <Text style={styles.removePhotoButtonText}>Remove Photo</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {uploadingPhoto && (
+              <Text style={styles.uploadingText}>Uploading photo...</Text>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -684,5 +750,47 @@ const styles = StyleSheet.create({
   selectedPlayStyleText: {
     color: '#4A90E2',
     fontWeight: 'bold',
+  },
+  photoUploadContainer: {
+    backgroundColor: '#F8F9FA',
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    height: 200,
+  },
+  photoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+  },
+  photoPlaceholderText: {
+    color: '#A0A0A0',
+    fontSize: 16,
+  },
+  selectedPhoto: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+  },
+  removePhotoButton: {
+    marginTop: 10,
+    backgroundColor: '#FF6B6B',
+    borderRadius: 12,
+    padding: 10,
+    alignItems: 'center',
+  },
+  removePhotoButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  uploadingText: {
+    textAlign: 'center',
+    color: '#666',
+    marginTop: 10,
   },
 });

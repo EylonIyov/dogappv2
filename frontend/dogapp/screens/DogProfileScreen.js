@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function DogProfileScreen({ route, navigation }) {
@@ -70,11 +71,22 @@ export default function DogProfileScreen({ route, navigation }) {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header Section */}
         <View style={styles.header}>
-          <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+          {dog.photo_url && dog.photo_url !== '' ? (
+            <Image
+              source={{ uri: dog.photo_url }}
+              style={styles.dogProfilePhoto}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              placeholder="🐕"
+              transition={300}
+            />
+          ) : (
+            <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+          )}
           <Text style={styles.dogName}>{dog.name}</Text>
           <Text style={styles.dogBreed}>{dog.breed}</Text>
           <Text style={styles.addedDate}>
-            Added to pack on {formatDate(dog.createdAt)}
+            Added to pack on {formatDate(dog.created_at || dog.createdAt)}
           </Text>
         </View>
 
@@ -168,6 +180,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#4A90E2',
     padding: 30,
     alignItems: 'center',
+  },
+  dogProfilePhoto: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 15,
   },
   dogEmoji: {
     fontSize: 80,
