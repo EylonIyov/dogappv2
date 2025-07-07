@@ -1,7 +1,7 @@
 .env
 .DS_Store
 backend/serviceAccountKey.json
-backend/node_modules/
+backend/node_modules
 
 # Environment variables
 backend/.env
