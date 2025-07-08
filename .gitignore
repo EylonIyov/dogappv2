@@ -11,3 +11,5 @@ backend/serviceAccountKey.json
 
 # Node modules (should always be ignored)
 backend/node_modules/
+
+frontend/dogapp/node_modules
