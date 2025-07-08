@@ -13,3 +13,6 @@ backend/serviceAccountKey.json
 backend/node_modules/
 
 frontend/dogapp/node_modules
+
+#ideas for implementation
+notes.txt
