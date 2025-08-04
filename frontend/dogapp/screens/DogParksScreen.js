@@ -11,13 +11,21 @@ import {
   Platform,
 } from 'react-native';
 import DogParkService from '../services/DogParkService';
+import DogService from '../services/DogService';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function DogParksScreen({ navigation }) {
+  const { currentUser } = useAuth();
   const [parks, setParks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dogs, setDogs] = useState([]);
+  const [showDogSelection, setShowDogSelection] = useState(false);
+  const [selectedPark, setSelectedPark] = useState(null);
+  const [selectedDogs, setSelectedDogs] = useState([]);
 
   useEffect(() => {
     loadParks();
+    loadDogs();
   }, []);
 
   const loadParks = async () => {
@@ -49,28 +57,131 @@ export default function DogParksScreen({ navigation }) {
     }
   };
 
-  const handleCheckIn = (park) => {
-    if (Platform.OS === 'web') {
-      const confirmed = window.confirm(`Check in at ${park.name}?`);
-      if (confirmed) {
-        window.alert(`Successfully checked in at ${park.name}! 🐾`);
+  const loadDogs = async () => {
+    try {
+      console.log('🐕 Loading user dogs...');
+      const result = await DogService.getDogs();
+      
+      if (result.success) {
+        console.log('✅ Dogs loaded successfully:', result.dogs.length, 'dogs found');
+        setDogs(result.dogs);
+      } else {
+        console.error('❌ Failed to load dogs:', result.error);
       }
-    } else {
-      Alert.alert(
-        'Check In',
-        `Check in at ${park.name}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Check In',
-            onPress: () => {
-              Alert.alert('Success! 🐾', `Successfully checked in at ${park.name}!`);
-            },
-          },
-        ]
-      );
+    } catch (error) {
+      console.error('Error loading dogs:', error);
     }
   };
+
+  const handleCheckIn = (park) => {
+    if (dogs.length === 0) {
+      if (Platform.OS === 'web') {
+        window.alert('You need to add at least one dog before checking in at parks.');
+      } else {
+        Alert.alert('No Dogs Found', 'You need to add at least one dog before checking in at parks.');
+      }
+      return;
+    }
+    
+    setSelectedPark(park);
+    setSelectedDogs([]);
+    setShowDogSelection(true);
+  };
+
+  const confirmCheckIn = () => {
+    if (selectedDogs.length === 0) {
+      if (Platform.OS === 'web') {
+        window.alert('Please select at least one dog to check in.');
+      } else {
+        Alert.alert('No Dogs Selected', 'Please select at least one dog to check in.');
+      }
+      return;
+    }
+
+    const dogNames = selectedDogs.map(dog => dog.name).join(', ');
+    const message = `Successfully checked in ${dogNames} at ${selectedPark.name}! 🐾`;
+    
+    if (Platform.OS === 'web') {
+      window.alert(message);
+    } else {
+      Alert.alert('Success! 🐾', message);
+    }
+    
+    setShowDogSelection(false);
+    setSelectedPark(null);
+    setSelectedDogs([]);
+  };
+
+  const toggleDogSelection = (dog) => {
+    setSelectedDogs(prev => {
+      const isSelected = prev.find(d => d.id === dog.id);
+      if (isSelected) {
+        return prev.filter(d => d.id !== dog.id);
+      } else {
+        return [...prev, dog];
+      }
+    });
+  };
+
+  const DogSelectionModal = () => (
+    showDogSelection && (
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Dogs to Check In</Text>
+            <Text style={styles.modalSubtitle}>at {selectedPark?.name}</Text>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowDogSelection(false)}
+            >
+              <Text style={styles.modalCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.dogsList} showsVerticalScrollIndicator={false}>
+            {dogs.map((dog) => {
+              const isSelected = selectedDogs.find(d => d.id === dog.id);
+              return (
+                <TouchableOpacity
+                  key={dog.id}
+                  style={[styles.dogItem, isSelected && styles.dogItemSelected]}
+                  onPress={() => toggleDogSelection(dog)}
+                >
+                  <View style={styles.dogItemContent}>
+                    <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+                    <View style={styles.dogItemInfo}>
+                      <Text style={styles.dogItemName}>{dog.name}</Text>
+                      <Text style={styles.dogItemBreed}>{dog.breed}</Text>
+                    </View>
+                    <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                      {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setShowDogSelection(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.confirmButton, selectedDogs.length === 0 && styles.confirmButtonDisabled]}
+              onPress={confirmCheckIn}
+            >
+              <Text style={styles.confirmButtonText}>
+                Check In ({selectedDogs.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    )
+  );
 
   const ParkCard = ({ park }) => (
     <View style={styles.parkCard}>
@@ -138,6 +249,8 @@ export default function DogParksScreen({ navigation }) {
           <View style={styles.bottomPadding} />
         </ScrollView>
       )}
+
+      <DogSelectionModal />
     </SafeAreaView>
   );
 }
@@ -275,5 +388,145 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' && {
       height: 100,
     }),
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  modalHeader: {
+    marginBottom: 20,
+    position: 'relative',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 5,
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: '#4A90E2',
+    textAlign: 'center',
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: -5,
+    right: 0,
+    padding: 5,
+  },
+  modalCloseText: {
+    fontSize: 18,
+    color: '#FF6B6B',
+  },
+  dogsList: {
+    maxHeight: 300,
+    marginBottom: 20,
+  },
+  dogItem: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+  },
+  dogItemSelected: {
+    backgroundColor: '#E8F4FD',
+    borderColor: '#4A90E2',
+  },
+  dogItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dogItemInfo: {
+    flex: 1,
+    marginLeft: 15,
+  },
+  dogItemName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 2,
+  },
+  dogItemBreed: {
+    fontSize: 14,
+    color: '#666',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: '#4A90E2',
+    borderColor: '#4A90E2',
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  cancelButton: {
+    backgroundColor: '#E9ECEF',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+    flex: 1,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  confirmButton: {
+    backgroundColor: '#FF6B6B',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+    flex: 1,
+    alignItems: 'center',
+  },
+  confirmButtonDisabled: {
+    backgroundColor: '#CCC',
+  },
+  confirmButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });
