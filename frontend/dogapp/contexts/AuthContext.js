@@ -44,9 +44,15 @@ export const AuthProvider = ({ children }) => {
             setCurrentUser(data.user);
             setToken(storedToken);
           } else {
-            // Token is invalid, remove it
-            await AsyncStorage.removeItem('authToken');
-            console.log('Token verification failed, removed from storage');
+            // Only remove token if it's actually invalid (401/403), not for server errors
+            if (response.status === 401 || response.status === 403) {
+              await AsyncStorage.removeItem('authToken');
+              console.log('Token verification failed, removed from storage');
+            } else {
+              // For other errors (500, network issues), keep the token and set it
+              console.log('Token verification failed due to server error, keeping token');
+              setToken(storedToken);
+            }
           }
         } catch (fetchError) {
           clearTimeout(timeoutId);
@@ -57,6 +63,8 @@ export const AuthProvider = ({ children }) => {
           }
           // Don't remove token if it's just a network issue
           // The user can still try to use the app offline or retry later
+          // Set the token in state even if verification failed due to network issues
+          setToken(storedToken);
         }
       }
     } catch (error) {

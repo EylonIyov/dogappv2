@@ -359,9 +359,13 @@ app.get('/api/dog-parks', async (req, res) => {
     
     const parks = [];
     parksSnapshot.forEach(doc => {
+      const docData = doc.data();
+      // Remove any id field from document data to prevent conflicts
+      const { id: _, ...cleanDocData } = docData;
+      
       parks.push({
-        id: doc.id,
-        ...doc.data()
+        id: doc.id,  // Always use Firestore document ID
+        ...cleanDocData
       });
     });
 
@@ -467,6 +471,72 @@ app.delete('/api/dog-parks/:parkId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error deleting dog park:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
+// Check in dogs to a park (protected route)
+app.post('/api/dog-parks/:parkId/checkin', authenticateToken, async (req, res) => {
+  try {
+    const { parkId } = req.params;
+    const { dogIds } = req.body;
+
+    // Validation
+    if (!dogIds || !Array.isArray(dogIds) || dogIds.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'dogIds array is required and must contain at least one dog ID' 
+      });
+    }
+
+    // Verify the park exists
+    const parkDoc = await dogParksCollection.doc(parkId).get();
+    
+    if (!parkDoc.exists) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Park not found' 
+      });
+    }
+
+    // Verify that all dogs belong to the authenticated user
+    const dogPromises = dogIds.map(dogId => dogsCollection.doc(dogId).get());
+    const dogDocs = await Promise.all(dogPromises);
+    
+    for (let i = 0; i < dogDocs.length; i++) {
+      const dogDoc = dogDocs[i];
+      if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
+        return res.status(403).json({ 
+          success: false,
+          error: `Dog with ID ${dogIds[i]} not found or not authorized` 
+        });
+      }
+    }
+
+    // Get current checked in dogs or initialize empty array
+    const parkData = parkDoc.data();
+    const currentCheckedInDogs = parkData.checkedInDogs || [];
+    
+    // Add new dog IDs to the array (avoid duplicates)
+    const updatedCheckedInDogs = [...new Set([...currentCheckedInDogs, ...dogIds])];
+
+    // Update the park with new checked in dogs
+    await dogParksCollection.doc(parkId).update({
+      checkedInDogs: updatedCheckedInDogs,
+      updated_at: serverTimestamp()
+    });
+
+    console.log('✅ Dogs checked in successfully at park:', parkId);
+    res.json({
+      success: true,
+      message: 'Dogs checked in successfully',
+      checkedInDogs: updatedCheckedInDogs
+    });
+  } catch (error) {
+    console.error('❌ Error checking in dogs:', error);
     res.status(500).json({ 
       success: false,
       error: 'Internal server error' 
@@ -723,4 +793,5 @@ app.listen(PORT, () => {
   console.log(`  POST   http://localhost:${PORT}/api/dog-parks`);
   console.log(`  PUT    http://localhost:${PORT}/api/dog-parks/:parkId`);
   console.log(`  DELETE http://localhost:${PORT}/api/dog-parks/:parkId`);
+  console.log(`  POST   http://localhost:${PORT}/api/dog-parks/:parkId/checkin`);
 });

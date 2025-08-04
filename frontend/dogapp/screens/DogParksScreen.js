@@ -98,18 +98,42 @@ export default function DogParksScreen({ navigation }) {
       return;
     }
 
-    const dogNames = selectedDogs.map(dog => dog.name).join(', ');
-    const message = `Successfully checked in ${dogNames} at ${selectedPark.name}! 🐾`;
-    
-    if (Platform.OS === 'web') {
-      window.alert(message);
-    } else {
-      Alert.alert('Success! 🐾', message);
+    // Call the backend to check in the dogs
+    handleCheckInSubmit();
+  };
+
+  const handleCheckInSubmit = async () => {
+    try {
+      const dogIds = selectedDogs.map(dog => dog.id);
+      const result = await DogParkService.checkInDogs(selectedPark.id, dogIds);
+      
+      if (result.success) {
+        
+        setShowDogSelection(false);
+        setSelectedPark(null);
+        
+        // Navigate to confirmation screen with park and dogs data
+        navigation.navigate('CheckInConfirmation', {
+          park: selectedPark,
+          checkedInDogs: selectedDogs
+        });
+        
+        setSelectedDogs([]);
+      } else {
+        if (Platform.OS === 'web') {
+          window.alert(result.error || 'Failed to check in dogs');
+        } else {
+          Alert.alert('Error', result.error || 'Failed to check in dogs');
+        }
+      }
+    } catch (error) {
+      console.error('Error during check-in:', error);
+      if (Platform.OS === 'web') {
+        window.alert('Failed to check in dogs. Please try again.');
+      } else {
+        Alert.alert('Error', 'Failed to check in dogs. Please try again.');
+      }
     }
-    
-    setShowDogSelection(false);
-    setSelectedPark(null);
-    setSelectedDogs([]);
   };
 
   const toggleDogSelection = (dog) => {
@@ -242,9 +266,9 @@ export default function DogParksScreen({ navigation }) {
       ) : (
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
           <View style={styles.parksContainer}>
-            {parks.map((park) => (
-              <ParkCard key={park.id} park={park} />
-            ))}
+            {parks.map((park, index) => {
+              return <ParkCard key={park.id} park={park} />;
+            })}
           </View>
           <View style={styles.bottomPadding} />
         </ScrollView>

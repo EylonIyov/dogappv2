@@ -12,6 +12,7 @@ import AddDogScreen from './screens/AddDogScreen';
 import DogProfileScreen from './screens/DogProfileScreen';
 import EditDogScreen from './screens/EditDogScreen';
 import DogParksScreen from './screens/DogParksScreen';
+import CheckInConfirmationScreen from './screens/CheckInConfirmationScreen';
 
 const Stack = createStackNavigator();
 
@@ -87,6 +88,13 @@ function AppNavigator() {
               component={DogParksScreen} 
               options={{ 
                 title: '🏞️ Dog Parks'
+              }}
+            />
+            <Stack.Screen 
+              name="CheckInConfirmation" 
+              component={CheckInConfirmationScreen} 
+              options={{ 
+                title: '✅ Check-In Confirmed'
               }}
             />
           </>

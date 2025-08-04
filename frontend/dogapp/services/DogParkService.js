@@ -5,7 +5,7 @@ const API_BASE_URL = 'http://localhost:3000/api';
 // Helper function to get auth token
 const getAuthToken = async () => {
   try {
-    return await AsyncStorage.getItem('userToken');
+    return await AsyncStorage.getItem('authToken');
   } catch (error) {
     console.error('Error getting auth token:', error);
     return null;
@@ -105,6 +105,29 @@ class DogParkService {
       return { success: true };
     } catch (error) {
       console.error('❌ Error deleting dog park:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  static async checkInDogs(parkId, dogIds) {
+    try {
+      console.log('🏞️ Checking in dogs to park via backend...');
+      
+      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/dog-parks/${parkId}/checkin`, {
+        method: 'POST',
+        body: JSON.stringify({ dogIds }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to check in dogs');
+      }
+
+      console.log('✅ Dogs checked in successfully');
+      return { success: true, checkedInDogs: data.checkedInDogs };
+    } catch (error) {
+      console.error('❌ Error checking in dogs:', error);
       return { success: false, error: error.message };
     }
   }
