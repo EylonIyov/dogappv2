@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { memo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   Dimensions,
   Platform,
+  Animated
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
@@ -17,11 +18,39 @@ import DogService from '../services/DogService';
 
 const { width } = Dimensions.get('window');
 
+// Memoized DogCard to avoid re-render on parent state changes
+const DogCard = memo(({ dog, onPressProfile, onPressEdit, onPressDelete }) => (
+  <TouchableOpacity style={styles.dogCard} onPress={() => onPressProfile(dog)}>
+    <View style={styles.dogHeader}>
+      {dog.photo_url ? (
+        <Image source={{ uri: dog.photo_url }} style={styles.dogPhoto} contentFit="cover" cachePolicy="memory-disk" placeholder="🐕" transition={200} />
+      ) : (
+        <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+      )}
+      <View style={styles.dogInfo}>
+        <Text style={styles.dogName}>{dog.name}</Text>
+        <Text style={styles.dogBreed}>{dog.breed}</Text>
+        <Text style={styles.dogAge}>{dog.age} years old</Text>
+      </View>
+    </View>
+    <View style={styles.cardActions}>
+      <TouchableOpacity style={styles.editButton} onPress={() => onPressEdit(dog)}>
+        <Text style={styles.editButtonText}>✏️ Edit</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.deleteButton} onPress={() => onPressDelete(dog.id)}>
+        <Text style={styles.deleteButtonText}>🗑️ Delete</Text>
+      </TouchableOpacity>
+    </View>
+  </TouchableOpacity>
+));
+
 export default function DashboardScreen({ navigation }) {
   const { currentUser, logout } = useAuth();
   const [dogs, setDogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showMainMenu, setShowMainMenu] = useState(false);
+  // Animation value for menu
+  const menuAnim = useRef(new Animated.Value(0)).current;
 
   // Reload dogs when screen comes into focus (when returning from other screens)
   useFocusEffect(
@@ -114,7 +143,8 @@ export default function DashboardScreen({ navigation }) {
   const handleLogout = () => {
     const performLogout = async () => {
       try {
-        setShowMainMenu(false);
+        // animate menu close
+        closeMenu();
         await logout();
       } catch (error) {
         console.error('Logout error:', error);
@@ -143,52 +173,40 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
-  const DogCard = ({ dog }) => (
-    <TouchableOpacity
-      style={styles.dogCard}
-      onPress={() => navigation.navigate('DogProfile', { dog })}
-    >
-      <View style={styles.dogHeader}>
-        {dog.photo_url && dog.photo_url !== '' ? (
-          <Image
-            source={{ uri: dog.photo_url }}
-            style={styles.dogPhoto}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            placeholder="🐕"
-            transition={200}
-            onError={(error) => {
-              console.log('Image loading error for dog:', dog.name, 'URL:', dog.photo_url, 'Error:', error);
-            }}
-            onLoad={() => {
-              console.log('Image loaded successfully for dog:', dog.name, 'URL:', dog.photo_url);
-            }}
-          />
-        ) : (
-          <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
-        )}
-        <View style={styles.dogInfo}>
-          <Text style={styles.dogName}>{dog.name}</Text>
-          <Text style={styles.dogBreed}>{dog.breed}</Text>
-          <Text style={styles.dogAge}>{dog.age} years old</Text>
-        </View>
-      </View>
-      <View style={styles.cardActions}>
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={() => navigation.navigate('EditDog', { dog })}
-        >
-          <Text style={styles.editButtonText}>✏️ Edit</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => deleteDog(dog.id)}
-        >
-          <Text style={styles.deleteButtonText}>🗑️ Delete</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+  // Stable callbacks to prevent re-creation on each render
+  const handleNavigateProfile = useCallback(
+    (dog) => navigation.navigate('DogProfile', { dog }),
+    [navigation]
   );
+  const handleNavigateEdit = useCallback(
+    (dog) => navigation.navigate('EditDog', { dog }),
+    [navigation]
+  );
+  const handleDelete = useCallback(
+    (id) => deleteDog(id),
+    [deleteDog]
+  );
+
+  // Animates menu closing then hides
+  const closeMenu = useCallback(() => {
+    Animated.timing(menuAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => setShowMainMenu(false));
+  }, [menuAnim]);
+
+  // Animate menu when toggling
+  useEffect(() => {
+    if (showMainMenu) {
+      menuAnim.setValue(0);
+      Animated.timing(menuAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [showMainMenu]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -205,9 +223,12 @@ export default function DashboardScreen({ navigation }) {
                 }
               </Text>
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.menuButton}
-              onPress={() => setShowMainMenu(!showMainMenu)}
+              onPress={() => {
+                if (showMainMenu) closeMenu();
+                else setShowMainMenu(true);
+              }}
             >
               <Text style={styles.menuText}>☰</Text>
             </TouchableOpacity>
@@ -229,7 +250,13 @@ export default function DashboardScreen({ navigation }) {
         ) : (
           <View style={styles.dogsContainer}>
             {dogs.map((dog) => (
-              <DogCard key={dog.id} dog={dog} />
+              <DogCard
+                key={dog.id}
+                dog={dog}
+                onPressProfile={handleNavigateProfile}
+                onPressEdit={handleNavigateEdit}
+                onPressDelete={handleDelete}
+              />
             ))}
           </View>
         )}
@@ -238,16 +265,31 @@ export default function DashboardScreen({ navigation }) {
       {/* Main Menu Overlay */}
       {showMainMenu && (
         <View style={styles.menuOverlay}>
-          <TouchableOpacity 
-            style={styles.overlayBackground} 
-            onPress={() => setShowMainMenu(false)}
+          <TouchableOpacity
+            style={styles.overlayBackground}
+            onPress={closeMenu}
           />
-          <View style={styles.mainMenu}>
+          <Animated.View
+            style={[
+              styles.mainMenu,
+              {
+                opacity: menuAnim,
+                transform: [
+                  {
+                    translateY: menuAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [20, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
             <View style={styles.menuHeader}>
               <Text style={styles.menuTitle}>🐕 Main Menu</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.closeButton}
-                onPress={() => setShowMainMenu(false)}
+                onPress={closeMenu}
               >
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
@@ -288,6 +330,17 @@ export default function DashboardScreen({ navigation }) {
               <Text style={styles.menuItemText}>Refresh Data</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                closeMenu();
+                navigation.navigate('DogParks');
+              }}
+            >
+              <Text style={styles.menuItemEmoji}>🏞️</Text>
+              <Text style={styles.menuItemText}>Find Dog Parks</Text>
+            </TouchableOpacity>
+
             <View style={styles.menuDivider} />
             
             <TouchableOpacity
@@ -297,9 +350,9 @@ export default function DashboardScreen({ navigation }) {
               <Text style={styles.menuItemEmoji}>🚪</Text>
               <Text style={[styles.menuItemText, styles.logoutText]}>Logout</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      )}
+          </Animated.View>
+         </View>
+       )}
 
       {/* Main Add Button */}
       <View style={styles.fabContainer}>
