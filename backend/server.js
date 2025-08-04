@@ -43,6 +43,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-t
 // Firestore collections
 const usersCollection = db.collection('test_users');
 const dogsCollection = db.collection('dogs'); // Changed to match your actual collection name
+const dogParksCollection = db.collection('test_dogparks');
 
 // Middleware to verify JWT token
 const authenticateToken = (req, res, next) => {
@@ -348,6 +349,131 @@ app.get('/api/dog-breeds', async (req, res) => {
   }
 });
 
+// DOG PARKS MANAGEMENT ROUTES
+
+// Get all dog parks
+app.get('/api/dog-parks', async (req, res) => {
+  try {
+    console.log('🏞️ Fetching dog parks from Firestore...');
+    const parksSnapshot = await dogParksCollection.get();
+    
+    const parks = [];
+    parksSnapshot.forEach(doc => {
+      parks.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    console.log('✅ Dog parks loaded successfully:', parks.length, 'parks found');
+    res.json({ 
+      success: true,
+      parks 
+    });
+  } catch (error) {
+    console.error('❌ Error fetching dog parks:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
+// Add a new dog park (protected route)
+app.post('/api/dog-parks', authenticateToken, async (req, res) => {
+  try {
+    const { name, address, amenities } = req.body;
+
+    // Validation
+    if (!name || !address) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Name and address are required' 
+      });
+    }
+
+    console.log('🏞️ Adding new dog park to Firestore...');
+    const parkDoc = await dogParksCollection.add({
+      name,
+      address,
+      amenities: amenities || [],
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+
+    console.log('✅ Dog park added successfully with ID:', parkDoc.id);
+    res.status(201).json({
+      success: true,
+      message: 'Dog park added successfully',
+      park: {
+        id: parkDoc.id,
+        name,
+        address,
+        amenities: amenities || []
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error adding dog park:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
+// Update a dog park (protected route)
+app.put('/api/dog-parks/:parkId', authenticateToken, async (req, res) => {
+  try {
+    const { parkId } = req.params;
+    const { name, address, amenities } = req.body;
+
+    console.log('🏞️ Updating dog park in Firestore...');
+    const updateData = {
+      updated_at: serverTimestamp()
+    };
+
+    if (name !== undefined) updateData.name = name;
+    if (address !== undefined) updateData.address = address;
+    if (amenities !== undefined) updateData.amenities = amenities;
+
+    await dogParksCollection.doc(parkId).update(updateData);
+
+    console.log('✅ Dog park updated successfully');
+    res.json({
+      success: true,
+      message: 'Dog park updated successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error updating dog park:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
+// Delete a dog park (protected route)
+app.delete('/api/dog-parks/:parkId', authenticateToken, async (req, res) => {
+  try {
+    const { parkId } = req.params;
+
+    console.log('🏞️ Deleting dog park from Firestore...');
+    await dogParksCollection.doc(parkId).delete();
+
+    console.log('✅ Dog park deleted successfully');
+    res.json({
+      success: true,
+      message: 'Dog park deleted successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error deleting dog park:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
 // DOG MANAGEMENT ROUTES
 
 // Get all dogs for the authenticated user
@@ -592,4 +718,9 @@ app.listen(PORT, () => {
   console.log(`  POST   http://localhost:${PORT}/api/dogs/:dogId/photo`);
   console.log(`BREEDS:`);
   console.log(`  GET    http://localhost:${PORT}/api/dog-breeds`);
+  console.log(`PARKS:`);
+  console.log(`  GET    http://localhost:${PORT}/api/dog-parks`);
+  console.log(`  POST   http://localhost:${PORT}/api/dog-parks`);
+  console.log(`  PUT    http://localhost:${PORT}/api/dog-parks/:parkId`);
+  console.log(`  DELETE http://localhost:${PORT}/api/dog-parks/:parkId`);
 });

@@ -10,50 +10,11 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import DogParkService from '../services/DogParkService';
 
 export default function DogParksScreen({ navigation }) {
   const [parks, setParks] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Sample dog parks data - you can later replace this with API calls
-  const sampleParks = [
-    {
-      id: '1',
-      name: 'Central Dog Park',
-      address: '123 Main St, Downtown',
-      distance: '0.5 miles',
-      amenities: ['Fenced Area', 'Water Station', 'Waste Bags'],
-      hours: 'Open 24/7',
-      rating: 4.5,
-    },
-    {
-      id: '2', 
-      name: 'Riverside Dog Run',
-      address: '456 River Rd, Riverside',
-      distance: '1.2 miles',
-      amenities: ['Large Field', 'Agility Course', 'Shade'],
-      hours: '6:00 AM - 8:00 PM',
-      rating: 4.8,
-    },
-    {
-      id: '3',
-      name: 'Pine Valley Off-Leash Park',
-      address: '789 Pine Ave, Pine Valley',
-      distance: '2.1 miles', 
-      amenities: ['Separate Small Dog Area', 'Benches', 'Water Station'],
-      hours: '7:00 AM - 9:00 PM',
-      rating: 4.3,
-    },
-    {
-      id: '4',
-      name: 'Sunset Hills Dog Park',
-      address: '321 Sunset Blvd, Hills District',
-      distance: '3.0 miles',
-      amenities: ['Hills & Trails', 'Pond Access', 'Parking'],
-      hours: 'Dawn to Dusk',
-      rating: 4.7,
-    },
-  ];
 
   useEffect(() => {
     loadParks();
@@ -62,9 +23,20 @@ export default function DogParksScreen({ navigation }) {
   const loadParks = async () => {
     try {
       setLoading(true);
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setParks(sampleParks);
+      console.log('🔄 Loading dog parks from Firestore...');
+      const result = await DogParkService.getParks();
+      
+      if (result.success) {
+        console.log('✅ Parks loaded successfully:', result.parks.length, 'parks found');
+        setParks(result.parks);
+      } else {
+        console.error('❌ Failed to load parks:', result.error);
+        if (Platform.OS === 'web') {
+          window.alert(result.error || 'Failed to load dog parks');
+        } else {
+          Alert.alert('Error', result.error || 'Failed to load dog parks');
+        }
+      }
     } catch (error) {
       console.error('Error loading parks:', error);
       if (Platform.OS === 'web') {
@@ -98,21 +70,6 @@ export default function DogParksScreen({ navigation }) {
         ]
       );
     }
-  };
-
-  const renderStars = (rating) => {
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
-    const stars = [];
-
-    for (let i = 0; i < fullStars; i++) {
-      stars.push('⭐');
-    }
-    if (hasHalfStar) {
-      stars.push('⭐');
-    }
-    
-    return stars.join('');
   };
 
   const ParkCard = ({ park }) => (
@@ -255,23 +212,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 3,
-  },
-  parkDistance: {
-    fontSize: 14,
-    color: '#4A90E2',
-    marginBottom: 3,
-  },
-  parkHours: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  ratingContainer: {
-    marginTop: 5,
-  },
-  rating: {
-    fontSize: 14,
-    color: '#333',
   },
   amenitiesContainer: {
     marginBottom: 15,
