@@ -173,11 +173,18 @@ export default function DogParksScreen({ navigation }) {
                   onPress={() => toggleDogSelection(dog)}
                 >
                   <View style={styles.dogItemContent}>
-                    <Image
-                      source={{ uri: dog.photo }}
-                      style={styles.dogImage}
-                      resizeMode="cover"
-                    />
+                    {dog.photo_url ? (
+                      <Image
+                        source={{ uri: dog.photo_url }}
+                        style={styles.dogPhoto}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                        placeholder="🐕"
+                        transition={200}
+                      />
+                    ) : (
+                      <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+                    )}
                     <View style={styles.dogItemInfo}>
                       <Text style={styles.dogItemName}>{dog.name}</Text>
                       <Text style={styles.dogItemBreed}>{dog.breed}</Text>
@@ -491,12 +498,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  dogImage: {
+  dogPhoto: {
     width: 50,
     height: 50,
     borderRadius: 25,
     borderWidth: 2,
     borderColor: '#E9ECEF',
+  },
+  dogEmoji: {
+    fontSize: 24,
+    lineHeight: 50,
+    width: 50,
+    height: 50,
+    textAlign: 'center',
   },
   dogItemInfo: {
     flex: 1,
