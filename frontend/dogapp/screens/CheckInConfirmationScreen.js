@@ -13,6 +13,8 @@ import { Image } from 'expo-image';
 import DogParkService from '../services/DogParkService';
 import { useAuth } from '../contexts/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import io from 'socket.io-client';
 
 export default function CheckInConfirmationScreen({ route, navigation }) {
   const { park, checkedInDogs } = route.params;
@@ -20,16 +22,78 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const [otherDogs, setOtherDogs] = useState([]);
   const [loadingOtherDogs, setLoadingOtherDogs] = useState(true);
+  const [socket, setSocket] = useState(null);
 
   useEffect(() => {
-    loadOtherDogs();
+    setupLiveUpdates();
     
     // Set navigation options to hide the back button
     navigation.setOptions({
       headerLeft: () => null,
       gestureEnabled: false,
     });
+
+    // Cleanup WebSocket when component unmounts
+    return () => {
+      if (socket) {
+        console.log('📡 Cleaning up WebSocket connection on unmount');
+        socket.emit('leavePark', park.id);
+        socket.disconnect();
+      }
+    };
   }, [navigation]);
+
+  const setupLiveUpdates = async () => {
+    try {
+      setLoadingOtherDogs(true);
+      console.log('📡 Setting up live updates (WebSocket) for park:', park.id);
+      
+      // Load initial data
+      await loadOtherDogs();
+      
+      // Create WebSocket connection
+      const newSocket = io('http://localhost:3000');
+      
+      newSocket.on('connect', () => {
+        console.log('🟢 WebSocket connected:', newSocket.id);
+        // Join the specific park room
+        newSocket.emit('joinPark', park.id);
+      });
+
+      newSocket.on('parkUpdate', (data) => {
+        if (data.parkId === park.id) {
+          console.log('📡 Received real-time park update:', data);
+          
+          // Filter out current user's dogs
+          const myDogIds = checkedInDogs.map(dog => dog.id);
+          const otherDogsInPark = data.dogs.filter(dog => 
+            dog.owner_id !== currentUser?.id && !myDogIds.includes(dog.id)
+          );
+
+          console.log('📡 Updating other dogs list with', otherDogsInPark.length, 'dogs');
+          setOtherDogs(otherDogsInPark);
+          setLoadingOtherDogs(false);
+        }
+      });
+
+      newSocket.on('disconnect', () => {
+        console.log('🔴 WebSocket disconnected');
+      });
+
+      newSocket.on('connect_error', (error) => {
+        console.error('📡 WebSocket connection error:', error);
+        // Fallback to manual loading if WebSocket fails
+        loadOtherDogs();
+      });
+
+      setSocket(newSocket);
+      console.log('📡 Live WebSocket setup complete');
+
+    } catch (error) {
+      console.error('Error setting up live updates:', error);
+      loadOtherDogs();
+    }
+  };
 
   const loadOtherDogs = async () => {
     try {

@@ -7,12 +7,28 @@ const multer = require('multer');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { db, serverTimestamp } = require('./firebase-config');
 const { uploadToS3, validateImageFile } = require('./dogUploadPicture');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 
 // Environment check
 const isProduction = process.env.NODE_ENV === 'production';
+
+// Store SSE connections for real-time updates
+const sseConnections = new Map(); // parkId -> Set of response objects
+
+// Store active connections for each park
+const parkConnections = new Map(); // parkId -> Set of socket IDs
 
 // Middleware
 app.use(cors({
@@ -75,6 +91,158 @@ const calculateAge = (dateOfBirth) => {
   }
   
   return age;
+};
+
+// Helper function to broadcast park updates to SSE clients
+const broadcastParkUpdate = async (parkId) => {
+  const connections = sseConnections.get(parkId);
+  if (!connections || connections.size === 0) {
+    return;
+  }
+
+  try {
+    // Get updated dogs list for this park
+    const parkDoc = await dogParksCollection.doc(parkId).get();
+    if (!parkDoc.exists) {
+      return;
+    }
+
+    const parkData = parkDoc.data();
+    const checkedInDogIds = parkData.checkedInDogs || [];
+    
+    if (checkedInDogIds.length === 0) {
+      // Send empty list to all clients
+      const updateData = JSON.stringify({
+        type: 'park_update',
+        parkId,
+        dogs: []
+      });
+
+      connections.forEach(res => {
+        try {
+          res.write(`data: ${updateData}\n\n`);
+        } catch (error) {
+          console.log('Error sending SSE update to client:', error);
+          connections.delete(res);
+        }
+      });
+      return;
+    }
+
+    // Fetch all the dog documents
+    const dogPromises = checkedInDogIds.map(dogId => dogsCollection.doc(dogId).get());
+    const dogDocs = await Promise.all(dogPromises);
+    
+    const checkedInDogs = [];
+    dogDocs.forEach((dogDoc, index) => {
+      if (dogDoc.exists) {
+        const dogData = dogDoc.data();
+        checkedInDogs.push({
+          id: dogDoc.id,
+          name: dogData.name,
+          breed: dogData.breed,
+          age: dogData.age,
+          emoji: dogData.emoji,
+          owner_id: dogData.owner_id,
+          energy_level: dogData.energy_level,
+          photo_url: dogData.photo_url
+        });
+      }
+    });
+
+    const updateData = JSON.stringify({
+      type: 'park_update',
+      parkId,
+      dogs: checkedInDogs
+    });
+
+    console.log(`📡 Broadcasting park update to ${connections.size} clients for park ${parkId}`);
+
+    // Send update to all connected clients for this park
+    connections.forEach(res => {
+      try {
+        res.write(`data: ${updateData}\n\n`);
+      } catch (error) {
+        console.log('Error sending SSE update to client:', error);
+        connections.delete(res);
+      }
+    });
+
+  } catch (error) {
+    console.error('Error broadcasting park update:', error);
+  }
+};
+
+// Helper function to broadcast park updates via WebSocket
+const broadcastParkUpdateWebSocket = async (parkId) => {
+  const connections = parkConnections.get(parkId);
+  if (!connections || connections.size === 0) {
+    return;
+  }
+
+  try {
+    // Get updated dogs list for this park
+    const parkDoc = await dogParksCollection.doc(parkId).get();
+    if (!parkDoc.exists) {
+      return;
+    }
+
+    const parkData = parkDoc.data();
+    const checkedInDogIds = parkData.checkedInDogs || [];
+    
+    if (checkedInDogIds.length === 0) {
+      // Send empty list to all connected clients
+      const updateData = {
+        type: 'park_update',
+        parkId,
+        dogs: []
+      };
+
+      connections.forEach(socketId => {
+        io.to(socketId).emit('parkUpdate', updateData);
+      });
+      
+      console.log(`📡 Broadcasted empty park update to ${connections.size} WebSocket clients for park ${parkId}`);
+      return;
+    }
+
+    // Fetch all the dog documents
+    const dogPromises = checkedInDogIds.map(dogId => dogsCollection.doc(dogId).get());
+    const dogDocs = await Promise.all(dogPromises);
+    
+    const checkedInDogs = [];
+    dogDocs.forEach((dogDoc, index) => {
+      if (dogDoc.exists) {
+        const dogData = dogDoc.data();
+        checkedInDogs.push({
+          id: dogDoc.id,
+          name: dogData.name,
+          breed: dogData.breed,
+          age: dogData.age,
+          emoji: dogData.emoji,
+          owner_id: dogData.owner_id,
+          energy_level: dogData.energy_level,
+          photo_url: dogData.photo_url
+        });
+      }
+    });
+
+    const updateData = {
+      type: 'park_update',
+      parkId,
+      dogs: checkedInDogs
+    };
+
+    console.log(`📡 Broadcasting park update to ${connections.size} WebSocket clients for park ${parkId}`);
+
+    // Send update to all connected clients for this park
+    connections.forEach(socketId => {
+      io.to(socketId).emit('parkUpdate', updateData);
+    });
+
+  } catch (error) {
+    console.error('Error broadcasting WebSocket park update:', error);
+  }
 };
 
 // Routes
@@ -529,6 +697,11 @@ app.post('/api/dog-parks/:parkId/checkin', authenticateToken, async (req, res) =
       updated_at: serverTimestamp()
     });
 
+    // Broadcast the update to SSE clients
+    broadcastParkUpdate(parkId);
+    // Broadcast the update to WebSocket clients
+    broadcastParkUpdateWebSocket(parkId);
+
     console.log('✅ Dogs checked in successfully at park:', parkId);
     res.json({
       success: true,
@@ -605,6 +778,11 @@ app.post('/api/dog-parks/:parkId/checkout', authenticateToken, async (req, res) 
       checkedInDogs: updatedCheckedInDogs,
       updated_at: serverTimestamp()
     });
+
+    // Broadcast the update to SSE clients
+    broadcastParkUpdate(parkId);
+    // Broadcast the update to WebSocket clients
+    broadcastParkUpdateWebSocket(parkId);
 
     console.log('✅ Dogs checked out successfully from park:', parkId);
     res.json({
@@ -911,8 +1089,103 @@ app.post('/api/dogs/:dogId/photo', authenticateToken, upload.single('photo'), as
   }
 });
 
+// SSE endpoint for real-time park updates
+app.get('/api/dog-parks/:parkId/live', authenticateToken, (req, res) => {
+  const { parkId } = req.params;
+  
+  console.log(`📡 New SSE connection for park ${parkId}`);
+
+  // Set SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
+  });
+
+  // Initialize connections set for this park if it doesn't exist
+  if (!sseConnections.has(parkId)) {
+    sseConnections.set(parkId, new Set());
+  }
+
+  // Add this connection to the park's connections
+  const parkConnections = sseConnections.get(parkId);
+  parkConnections.add(res);
+
+  // Send initial connection confirmation
+  res.write(`data: ${JSON.stringify({ type: 'connected', parkId })}\n\n`);
+
+  // Send current dogs list immediately
+  broadcastParkUpdate(parkId);
+
+  // Handle client disconnect
+  req.on('close', () => {
+    console.log(`📡 SSE connection closed for park ${parkId}`);
+    parkConnections.delete(res);
+    
+    // Clean up empty connection sets
+    if (parkConnections.size === 0) {
+      sseConnections.delete(parkId);
+    }
+  });
+
+  req.on('error', (error) => {
+    console.log('SSE connection error:', error);
+    parkConnections.delete(res);
+  });
+});
+
+// Socket.IO connection handler
+io.on('connection', (socket) => {
+  console.log('🟢 New WebSocket connection:', socket.id);
+
+  // Handle park join request
+  socket.on('joinPark', (parkId) => {
+    console.log(`🏞️ Socket ${socket.id} joining park ${parkId}`);
+    
+    // Initialize park connection set if it doesn't exist
+    if (!parkConnections.has(parkId)) {
+      parkConnections.set(parkId, new Set());
+    }
+
+    // Add socket to park's connection set
+    const connections = parkConnections.get(parkId);
+    connections.add(socket.id);
+
+    // Send current dogs list to the newly joined client
+    broadcastParkUpdate(parkId);
+
+    // Handle socket disconnect
+    socket.on('disconnect', () => {
+      console.log('🔴 Socket disconnected:', socket.id);
+      connections.delete(socket.id);
+
+      // Clean up empty connection sets
+      if (connections.size === 0) {
+        parkConnections.delete(parkId);
+      }
+    });
+  });
+
+  // Handle park leave request
+  socket.on('leavePark', (parkId) => {
+    console.log(`🚪 Socket ${socket.id} leaving park ${parkId}`);
+    
+    const connections = parkConnections.get(parkId);
+    if (connections) {
+      connections.delete(socket.id);
+
+      // Clean up empty connection sets
+      if (connections.size === 0) {
+        parkConnections.delete(parkId);
+      }
+    }
+  });
+});
+
 // Start server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🐕 Dog App Backend running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`API Endpoints:`);
@@ -938,4 +1211,8 @@ app.listen(PORT, () => {
   console.log(`  POST   http://localhost:${PORT}/api/dog-parks/:parkId/checkin`);
   console.log(`  POST   http://localhost:${PORT}/api/dog-parks/:parkId/checkout`);
   console.log(`  GET    http://localhost:${PORT}/api/dog-parks/:parkId/dogs`);
+  console.log(`  GET    http://localhost:${PORT}/api/dog-parks/:parkId/live`); // SSE endpoint
+  console.log(`WEBSOCKET:`);
+  console.log(`  Real-time updates available via Socket.IO`);
+  console.log(`  Events: joinPark, leavePark, parkUpdate`);
 });
