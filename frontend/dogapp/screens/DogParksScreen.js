@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 import DogParkService from '../services/DogParkService';
 import DogService from '../services/DogService';
 import { useAuth } from '../contexts/AuthContext';
@@ -172,7 +173,11 @@ export default function DogParksScreen({ navigation }) {
                   onPress={() => toggleDogSelection(dog)}
                 >
                   <View style={styles.dogItemContent}>
-                    <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+                    <Image
+                      source={{ uri: dog.photo }}
+                      style={styles.dogImage}
+                      resizeMode="cover"
+                    />
                     <View style={styles.dogItemInfo}>
                       <Text style={styles.dogItemName}>{dog.name}</Text>
                       <Text style={styles.dogItemBreed}>{dog.breed}</Text>
@@ -485,6 +490,13 @@ const styles = StyleSheet.create({
   dogItemContent: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  dogImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
   },
   dogItemInfo: {
     flex: 1,

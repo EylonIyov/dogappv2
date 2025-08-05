@@ -128,10 +128,31 @@ class DogParkService {
         body: JSON.stringify({ dogIds }),
       });
 
-      const data = await response.json();
-
+      // Check if response is ok before trying to parse JSON
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to check in dogs');
+        let errorMessage = 'Failed to check in dogs';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          const textResponse = await response.text();
+          if (response.status === 401) {
+            errorMessage = 'Authentication required. Please log in again.';
+          } else if (response.status === 403) {
+            errorMessage = 'Access denied. Please check your permissions.';
+          } else {
+            errorMessage = `Server error (${response.status})`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError);
+        throw new Error('Invalid response from server');
       }
 
       console.log('✅ Dogs checked in successfully');
@@ -151,10 +172,31 @@ class DogParkService {
         body: JSON.stringify({ dogIds }),
       });
 
-      const data = await response.json();
-
+      // Check if response is ok before trying to parse JSON
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to check out dogs');
+        let errorMessage = 'Failed to check out dogs';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          const textResponse = await response.text();
+          if (response.status === 401) {
+            errorMessage = 'Authentication required. Please log in again.';
+          } else if (response.status === 403) {
+            errorMessage = 'Access denied. Please check your permissions.';
+          } else {
+            errorMessage = `Server error (${response.status})`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError);
+        throw new Error('Invalid response from server');
       }
 
       console.log('✅ Dogs checked out successfully');
@@ -170,10 +212,36 @@ class DogParkService {
       console.log('🐕 Getting dogs checked into park via backend...');
       
       const response = await makeAuthenticatedRequest(`${API_BASE_URL}/dog-parks/${parkId}/dogs`);
-      const data = await response.json();
-
+      
+      // Check if response is ok before trying to parse JSON
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to get dogs in park');
+        // Try to get error message from response
+        let errorMessage = 'Failed to get dogs in park';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          // If JSON parsing fails, it might be an HTML error page
+          const textResponse = await response.text();
+          if (textResponse.includes('Cannot GET')) {
+            errorMessage = 'API endpoint not found';
+          } else if (response.status === 401) {
+            errorMessage = 'Authentication required. Please log in again.';
+          } else if (response.status === 403) {
+            errorMessage = 'Access denied. Please check your permissions.';
+          } else {
+            errorMessage = `Server error (${response.status})`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError);
+        throw new Error('Invalid response from server');
       }
 
       console.log('✅ Dogs in park loaded successfully');

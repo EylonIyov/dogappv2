@@ -144,7 +144,18 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
             <Text style={styles.sectionTitle}>Your Dogs Checked In:</Text>
             {checkedInDogs.map((dog, index) => (
               <View key={dog.id} style={styles.dogItem}>
-                <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+                {dog.photo_url ? (
+                  <Image
+                    source={{ uri: dog.photo_url }}
+                    style={styles.dogPhoto}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                    placeholder="🐕"
+                    transition={200}
+                  />
+                ) : (
+                  <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+                )}
                 <View style={styles.dogInfo}>
                   <Text style={styles.dogName}>{dog.name}</Text>
                   <Text style={styles.dogBreed}>{dog.breed}</Text>
@@ -165,7 +176,18 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
               <ScrollView style={styles.otherDogsList} showsVerticalScrollIndicator={false}>
                 {otherDogs.map((dog) => (
                   <View key={dog.id} style={styles.otherDogItem}>
-                    <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+                    {dog.photo_url ? (
+                      <Image
+                        source={{ uri: dog.photo_url }}
+                        style={styles.otherDogPhoto}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                        placeholder="🐕"
+                        transition={200}
+                      />
+                    ) : (
+                      <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
+                    )}
                     <View style={styles.dogInfo}>
                       <Text style={styles.dogName}>{dog.name}</Text>
                       <Text style={styles.dogBreed}>{dog.breed}</Text>
@@ -287,6 +309,18 @@ const styles = StyleSheet.create({
   },
   dogEmoji: {
     fontSize: 24,
+    marginRight: 15,
+  },
+  dogPhoto: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 15,
+  },
+  otherDogPhoto: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     marginRight: 15,
   },
   dogInfo: {
