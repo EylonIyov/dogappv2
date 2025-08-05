@@ -544,6 +544,148 @@ app.post('/api/dog-parks/:parkId/checkin', authenticateToken, async (req, res) =
   }
 });
 
+// Check out dogs from a park (protected route)
+app.post('/api/dog-parks/:parkId/checkout', authenticateToken, async (req, res) => {
+  try {
+    const { parkId } = req.params;
+    const { dogIds } = req.body;
+
+    // Validation
+    if (!dogIds || !Array.isArray(dogIds) || dogIds.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'dogIds array is required and must contain at least one dog ID' 
+      });
+    }
+
+    console.log('🚪 Checking out dogs from park:', parkId, 'Dogs:', dogIds);
+
+    // Verify the park exists
+    const parkDoc = await dogParksCollection.doc(parkId).get();
+    
+    if (!parkDoc.exists) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Park not found' 
+      });
+    }
+
+    // Verify that all dogs belong to the authenticated user
+    const dogPromises = dogIds.map(dogId => dogsCollection.doc(dogId).get());
+    const dogDocs = await Promise.all(dogPromises);
+    
+    for (let i = 0; i < dogDocs.length; i++) {
+      const dogDoc = dogDocs[i];
+      if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
+        return res.status(403).json({ 
+          success: false,
+          error: `Dog with ID ${dogIds[i]} not found or not authorized` 
+        });
+      }
+    }
+
+    // Get current checked in dogs
+    const parkData = parkDoc.data();
+    const currentCheckedInDogs = parkData.checkedInDogs || [];
+    
+    console.log('🔍 DEBUG - Current checked in dogs:', currentCheckedInDogs);
+    console.log('🔍 DEBUG - Dogs to remove:', dogIds);
+    console.log('🔍 DEBUG - Types:', {
+      currentCheckedInDogs: currentCheckedInDogs.map(id => ({ value: id, type: typeof id })),
+      dogIdsToRemove: dogIds.map(id => ({ value: id, type: typeof id }))
+    });
+    
+    // Remove the dog IDs from the array
+    const updatedCheckedInDogs = currentCheckedInDogs.filter(dogId => !dogIds.includes(dogId));
+    
+    console.log('🔍 DEBUG - Updated checked in dogs after filter:', updatedCheckedInDogs);
+
+    // Update the park with the updated checked in dogs list
+    await dogParksCollection.doc(parkId).update({
+      checkedInDogs: updatedCheckedInDogs,
+      updated_at: serverTimestamp()
+    });
+
+    console.log('✅ Dogs checked out successfully from park:', parkId);
+    res.json({
+      success: true,
+      message: 'Dogs checked out successfully',
+      checkedInDogs: updatedCheckedInDogs
+    });
+  } catch (error) {
+    console.error('❌ Error checking out dogs:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
+// Get all dogs checked into a park (protected route)
+app.get('/api/dog-parks/:parkId/dogs', authenticateToken, async (req, res) => {
+  try {
+    const { parkId } = req.params;
+
+    console.log('🐕 Getting dogs checked into park:', parkId);
+
+    // Verify the park exists
+    const parkDoc = await dogParksCollection.doc(parkId).get();
+    
+    if (!parkDoc.exists) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Park not found' 
+      });
+    }
+
+    // Get the list of checked in dog IDs
+    const parkData = parkDoc.data();
+    const checkedInDogIds = parkData.checkedInDogs || [];
+    
+    if (checkedInDogIds.length === 0) {
+      return res.json({
+        success: true,
+        dogs: []
+      });
+    }
+
+    // Fetch all the dog documents
+    const dogPromises = checkedInDogIds.map(dogId => dogsCollection.doc(dogId).get());
+    const dogDocs = await Promise.all(dogPromises);
+    
+    const checkedInDogs = [];
+    dogDocs.forEach((dogDoc, index) => {
+      if (dogDoc.exists) {
+        const dogData = dogDoc.data();
+        checkedInDogs.push({
+          id: dogDoc.id,
+          name: dogData.name,
+          breed: dogData.breed,
+          age: dogData.age,
+          emoji: dogData.emoji,
+          owner_id: dogData.owner_id,
+          energy_level: dogData.energy_level,
+          photo_url: dogData.photo_url
+        });
+      } else {
+        console.log(`Dog with ID ${checkedInDogIds[index]} not found in database`);
+      }
+    });
+
+    console.log('✅ Found', checkedInDogs.length, 'dogs checked into park');
+    res.json({
+      success: true,
+      dogs: checkedInDogs
+    });
+  } catch (error) {
+    console.error('❌ Error getting dogs in park:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
 // DOG MANAGEMENT ROUTES
 
 // Get all dogs for the authenticated user
@@ -794,4 +936,6 @@ app.listen(PORT, () => {
   console.log(`  PUT    http://localhost:${PORT}/api/dog-parks/:parkId`);
   console.log(`  DELETE http://localhost:${PORT}/api/dog-parks/:parkId`);
   console.log(`  POST   http://localhost:${PORT}/api/dog-parks/:parkId/checkin`);
+  console.log(`  POST   http://localhost:${PORT}/api/dog-parks/:parkId/checkout`);
+  console.log(`  GET    http://localhost:${PORT}/api/dog-parks/:parkId/dogs`);
 });
