@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Alert } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import DogService from '../services/DogService';
+import CustomAlert from '../components/CustomAlert';
+import { useAlerts } from '../components/useCustomAlert';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
+  const { alertState, hideAlert, showError, showInfo } = useAlerts();
 
   const checkForFirstTimeUser = async () => {
     try {
@@ -16,25 +19,9 @@ export default function LoginScreen({ navigation }) {
       
       if (result.success && result.dogs.length === 0) {
         // User has no dogs, ask if they want to add their first one
-        Alert.alert(
-          'Welcome to DogApp! 🐕',
+        showInfo(
           'Would you like to add your first furry friend now?',
-          [
-            { 
-              text: 'Maybe Later', 
-              style: 'cancel',
-              onPress: () => {
-                // User will stay on dashboard
-              }
-            },
-            { 
-              text: 'Add My Dog', 
-              style: 'default',
-              onPress: () => {
-                navigation.navigate('AddDog');
-              }
-            }
-          ]
+          'Welcome to DogApp! 🐕'
         );
       }
       // If user has dogs or there's an error, just continue normally
@@ -46,7 +33,7 @@ export default function LoginScreen({ navigation }) {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter both email and password');
+      showError('Please enter both email and password');
       return;
     }
 
@@ -64,11 +51,11 @@ export default function LoginScreen({ navigation }) {
         
         // Navigation will happen automatically due to auth state change
       } else {
-        Alert.alert('Login Error', result.error);
+        showError(result.error, 'Login Error');
       }
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Login Error', 'An unexpected error occurred. Please try again.');
+      showError('An unexpected error occurred. Please try again.', 'Login Error');
     } finally {
       setIsLoading(false);
     }
@@ -132,7 +119,7 @@ export default function LoginScreen({ navigation }) {
 
           <TouchableOpacity 
             style={styles.forgotPasswordButton} 
-            onPress={() => Alert.alert('Forgot Password', 'Password reset feature coming soon!')}
+            onPress={() => showInfo('Password reset feature coming soon!', 'Forgot Password')}
             disabled={isLoading}
           >
             <Text style={styles.forgotPasswordText}>Forgot Password? 🤔</Text>
@@ -143,6 +130,15 @@ export default function LoginScreen({ navigation }) {
           <Text style={styles.footerText}>Made with ❤️ for dog lovers</Text>
         </View>
       </View>
+
+      <CustomAlert
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={hideAlert}
+        confirmText={alertState.confirmText}
+      />
     </SafeAreaView>
   );
 }

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   View,
   ScrollView,
-  Alert,
   Modal,
   FlatList,
   Image,
@@ -14,6 +13,8 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import DogService from '../services/DogService';
+import CustomAlert from '../components/CustomAlert';
+import { useAlerts } from '../components/useCustomAlert';
 
 export default function AddDogScreen({ navigation }) {
   const [dogData, setDogData] = useState({
@@ -58,6 +59,8 @@ export default function AddDogScreen({ navigation }) {
     "Social Play"
   ];
 
+  const { alertState, hideAlert, showError, showSuccess, showWarning } = useAlerts();
+
   useEffect(() => {
     fetchBreeds();
     requestPermissions();
@@ -68,10 +71,9 @@ export default function AddDogScreen({ navigation }) {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert(
-          'Permission Required',
+        showWarning(
           'We need access to your photo library to select dog pictures. Please enable this in your device settings.',
-          [{ text: 'OK' }]
+          'Permission Required'
         );
       }
     } catch (error) {
@@ -107,11 +109,11 @@ export default function AddDogScreen({ navigation }) {
         };
         setAllBreeds(data.breeds);
       } else {
-        Alert.alert('Error', 'Failed to load dog breeds');
+        showError('Failed to load dog breeds', 'Error');
       }
     } catch (error) {
       console.error('Error fetching breeds:', error);
-      Alert.alert('Error', 'Failed to load dog breeds. Please check your connection and try again.');
+      showError('Failed to load dog breeds. Please check your connection and try again.', 'Error');
     } finally {
       setBreedsLoading(false);
     }
@@ -163,14 +165,14 @@ export default function AddDogScreen({ navigation }) {
   const handleSave = async () => {
     // Validation - only check required fields
     if (!dogData.name.trim() || !dogData.breed.trim() || !dogData.age.toString().trim()) {
-      Alert.alert('Missing Information', 'Please fill in the name, breed, and age fields.');
+      showError('Please fill in the name, breed, and age fields.', 'Missing Information');
       return;
     }
 
     // Validate age is a real number
     const ageNumber = parseFloat(dogData.age);
     if (isNaN(ageNumber) || ageNumber <= 0 || ageNumber > 30) {
-      Alert.alert('Invalid Age', 'Please enter a valid age between 0 and 30 years.');
+      showError('Please enter a valid age between 0 and 30 years.', 'Invalid Age');
       return;
     }
 
@@ -210,18 +212,13 @@ export default function AddDogScreen({ navigation }) {
           ? `${dogData.name} has been added to your pack, but photo upload failed.`
           : `${dogData.name} has been added to your pack!`;
 
-        Alert.alert('Success! 🎉', successMessage, [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]);
+        showSuccess(successMessage, 'Success! 🎉');
       } else {
-        Alert.alert('Error', result.error || 'Failed to add dog. Please try again.');
+        showError(result.error || 'Failed to add dog. Please try again.');
       }
     } catch (error) {
       console.error('Error saving dog:', error);
-      Alert.alert('Error', 'Failed to save dog profile. Please try again.');
+      showError('Failed to save dog profile. Please try again.');
     } finally {
       setLoading(false);
       setUploadingPhoto(false);
@@ -412,7 +409,7 @@ export default function AddDogScreen({ navigation }) {
                     }
                   } catch (error) {
                     console.error('Error opening image picker:', error);
-                    Alert.alert('Error', 'Failed to open photo library. Please try again.');
+                    showError('Failed to open photo library. Please try again.', 'Error');
                   }
                 }}
               >
@@ -459,6 +456,21 @@ export default function AddDogScreen({ navigation }) {
           <View style={styles.bottomPadding} />
         </View>
       </ScrollView>
+
+      <CustomAlert
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={() => {
+          hideAlert();
+          // Navigate back on success
+          if (alertState.type === 'success') {
+            navigation.goBack();
+          }
+        }}
+        confirmText={alertState.confirmText}
+      />
     </View>
   );
 }

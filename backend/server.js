@@ -1089,6 +1089,227 @@ app.post('/api/dogs/:dogId/photo', authenticateToken, upload.single('photo'), as
   }
 });
 
+// FRIEND MANAGEMENT ROUTES
+
+// Add a friend to a dog (only if both dogs are currently in the same park)
+app.post('/api/dogs/:dogId/friends/:friendDogId', authenticateToken, async (req, res) => {
+  try {
+    const { dogId, friendDogId } = req.params;
+
+    console.log(`🤝 Adding friend relationship: ${dogId} wants to befriend ${friendDogId}`);
+
+    // Validation
+    if (dogId === friendDogId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'A dog cannot befriend itself' 
+      });
+    }
+
+    // Get both dog documents
+    const [myDogDoc, friendDogDoc] = await Promise.all([
+      dogsCollection.doc(dogId).get(),
+      dogsCollection.doc(friendDogId).get()
+    ]);
+
+    // Verify my dog exists and belongs to the authenticated user
+    if (!myDogDoc.exists || myDogDoc.data().owner_id !== req.user.userId) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Your dog not found or not authorized' 
+      });
+    }
+
+    // Verify friend dog exists
+    if (!friendDogDoc.exists) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Friend dog not found' 
+      });
+    }
+
+    // Check if both dogs are currently in the same park
+    const parksSnapshot = await dogParksCollection.get();
+    let bothDogsInSamePark = false;
+    let parkName = '';
+
+    for (const parkDoc of parksSnapshot.docs) {
+      const parkData = parkDoc.data();
+      const checkedInDogs = parkData.checkedInDogs || [];
+      
+      if (checkedInDogs.includes(dogId) && checkedInDogs.includes(friendDogId)) {
+        bothDogsInSamePark = true;
+        parkName = parkData.name;
+        break;
+      }
+    }
+
+    if (!bothDogsInSamePark) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Dogs can only become friends when they are both checked into the same park' 
+      });
+    }
+
+    // Get current friends list
+    const myDogData = myDogDoc.data();
+    const currentFriends = myDogData.friends || [];
+
+    // Check if already friends
+    if (currentFriends.includes(friendDogId)) {
+      return res.status(400).json({ 
+        success: false,
+        error: `${myDogData.name} and ${friendDogDoc.data().name} are already friends!` 
+      });
+    }
+
+    // Add friend to the list
+    const updatedFriends = [...currentFriends, friendDogId];
+
+    // Update the dog document
+    await dogsCollection.doc(dogId).update({
+      friends: updatedFriends,
+      updated_at: serverTimestamp()
+    });
+
+    console.log(`✅ Friend added successfully: ${myDogData.name} befriended ${friendDogDoc.data().name} at ${parkName}`);
+
+    res.json({
+      success: true,
+      message: `${myDogData.name} and ${friendDogDoc.data().name} are now friends! 🐕❤️🐕`,
+      friendsCount: updatedFriends.length,
+      parkName
+    });
+
+  } catch (error) {
+    console.error('❌ Error adding friend:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
+// Remove a friend from a dog
+app.delete('/api/dogs/:dogId/friends/:friendDogId', authenticateToken, async (req, res) => {
+  try {
+    const { dogId, friendDogId } = req.params;
+
+    console.log(`💔 Removing friend relationship: ${dogId} unfriending ${friendDogId}`);
+
+    // Get my dog document
+    const myDogDoc = await dogsCollection.doc(dogId).get();
+
+    // Verify my dog exists and belongs to the authenticated user
+    if (!myDogDoc.exists || myDogDoc.data().owner_id !== req.user.userId) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Your dog not found or not authorized' 
+      });
+    }
+
+    // Get current friends list
+    const myDogData = myDogDoc.data();
+    const currentFriends = myDogData.friends || [];
+
+    // Check if they are actually friends
+    if (!currentFriends.includes(friendDogId)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Dogs are not friends' 
+      });
+    }
+
+    // Remove friend from the list
+    const updatedFriends = currentFriends.filter(friendId => friendId !== friendDogId);
+
+    // Update the dog document
+    await dogsCollection.doc(dogId).update({
+      friends: updatedFriends,
+      updated_at: serverTimestamp()
+    });
+
+    console.log(`✅ Friend removed successfully: ${myDogData.name} unfriended a dog`);
+
+    res.json({
+      success: true,
+      message: 'Friend removed successfully',
+      friendsCount: updatedFriends.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error removing friend:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
+// Get friends list for a dog
+app.get('/api/dogs/:dogId/friends', authenticateToken, async (req, res) => {
+  try {
+    const { dogId } = req.params;
+
+    // Get my dog document
+    const myDogDoc = await dogsCollection.doc(dogId).get();
+
+    // Verify my dog exists and belongs to the authenticated user
+    if (!myDogDoc.exists || myDogDoc.data().owner_id !== req.user.userId) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Your dog not found or not authorized' 
+      });
+    }
+
+    const myDogData = myDogDoc.data();
+    const friendIds = myDogData.friends || [];
+
+    if (friendIds.length === 0) {
+      return res.json({
+        success: true,
+        friends: [],
+        friendsCount: 0
+      });
+    }
+
+    // Fetch friend dog documents
+    const friendPromises = friendIds.map(friendId => dogsCollection.doc(friendId).get());
+    const friendDocs = await Promise.all(friendPromises);
+
+    const friends = [];
+    friendDocs.forEach((friendDoc, index) => {
+      if (friendDoc.exists) {
+        const friendData = friendDoc.data();
+        friends.push({
+          id: friendDoc.id,
+          name: friendData.name,
+          breed: friendData.breed,
+          age: friendData.age,
+          emoji: friendData.emoji,
+          photo_url: friendData.photo_url,
+          energy_level: friendData.energy_level
+        });
+      } else {
+        console.log(`Friend dog with ID ${friendIds[index]} not found`);
+      }
+    });
+
+    res.json({
+      success: true,
+      friends,
+      friendsCount: friends.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting friends list:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
 // SSE endpoint for real-time park updates
 app.get('/api/dog-parks/:parkId/live', authenticateToken, (req, res) => {
   const { parkId } = req.params;
@@ -1201,6 +1422,9 @@ server.listen(PORT, () => {
   console.log(`  PUT    http://localhost:${PORT}/api/dogs/:dogId`);
   console.log(`  DELETE http://localhost:${PORT}/api/dogs/:dogId`);
   console.log(`  POST   http://localhost:${PORT}/api/dogs/:dogId/photo`);
+  console.log(`  POST   http://localhost:${PORT}/api/dogs/:dogId/friends/:friendDogId`);
+  console.log(`  DELETE http://localhost:${PORT}/api/dogs/:dogId/friends/:friendDogId`);
+  console.log(`  GET    http://localhost:${PORT}/api/dogs/:dogId/friends`);
   console.log(`BREEDS:`);
   console.log(`  GET    http://localhost:${PORT}/api/dog-breeds`);
   console.log(`PARKS:`);

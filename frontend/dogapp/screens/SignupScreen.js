@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Alert, ScrollView, Platform } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, ScrollView, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../contexts/AuthContext';
+import CustomAlert from '../components/CustomAlert';
+import { useAlerts } from '../components/useCustomAlert';
 
 export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -13,10 +15,10 @@ export default function SignupScreen({ navigation }) {
   const [gender, setGender] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
+  const { alertState, hideAlert, showError, showSuccess } = useAlerts();
 
   const onDateChange = (event, selectedDate) => {
     const currentDate = selectedDate || dateOfBirth;
-    // Only update the date, don't close the picker
     setDateOfBirth(currentDate);
   };
 
@@ -25,41 +27,37 @@ export default function SignupScreen({ navigation }) {
   };
 
   const formatDate = (date) => {
-    return date.toLocaleDateString('en-CA'); // Returns YYYY-MM-DD format
+    return date.toLocaleDateString('en-CA');
   };
 
   const handleSignUp = async () => {
-    // Validation for all required fields
     if (!email.trim() || !password.trim() || !confirmPassword.trim() || !fullName.trim() || !gender.trim()) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showError('Please fill in all required fields');
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      showError('Passwords do not match');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
+      showError('Password must be at least 6 characters long');
       return;
     }
 
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+      showError('Please enter a valid email address');
       return;
     }
 
-    // Validate that the date is not in the future
     const today = new Date();
     if (dateOfBirth > today) {
-      Alert.alert('Error', 'Date of birth cannot be in the future');
+      showError('Date of birth cannot be in the future');
       return;
     }
 
-    // Validate minimum age (13 years old)
     const age = today.getFullYear() - dateOfBirth.getFullYear();
     const monthDiff = today.getMonth() - dateOfBirth.getMonth();
     let calculatedAge = age;
@@ -68,7 +66,7 @@ export default function SignupScreen({ navigation }) {
     }
     
     if (calculatedAge < 13) {
-      Alert.alert('Error', 'You must be at least 13 years old to register');
+      showError('You must be at least 13 years old to register');
       return;
     }
 
@@ -78,33 +76,17 @@ export default function SignupScreen({ navigation }) {
       
       if (result.success) {
         console.log('User registered successfully');
-        Alert.alert('Success', 'Account created successfully! Welcome to DogApp! 🐕', [
-          { text: 'Get Started', onPress: () => {
-            // Navigation will happen automatically due to auth state change
-          }}
-        ]);
+        showSuccess('Account created successfully! Welcome to DogApp! 🐕', 'Success');
       } else {
-        // Check if it's an email already exists error
         if (result.error && result.error.includes('already exists')) {
-          Alert.alert(
-            'Email Already Registered', 
-            result.error,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { 
-                text: 'Sign In Instead', 
-                style: 'default',
-                onPress: () => navigation.navigate('Login')
-              }
-            ]
-          );
+          showError(result.error, 'Email Already Registered');
         } else {
-          Alert.alert('Sign Up Error', result.error);
+          showError(result.error, 'Sign Up Error');
         }
       }
     } catch (error) {
       console.error('Sign up error:', error);
-      Alert.alert('Sign Up Error', 'An unexpected error occurred. Please try again.');
+      showError('An unexpected error occurred. Please try again.', 'Sign Up Error');
     } finally {
       setIsLoading(false);
     }
@@ -167,8 +149,8 @@ export default function SignupScreen({ navigation }) {
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 onChange={onDateChange}
-                maximumDate={new Date()} // Prevent future dates
-                minimumDate={new Date(1920, 0, 1)} // Set reasonable minimum date
+                maximumDate={new Date()}
+                minimumDate={new Date(1920, 0, 1)}
               />
             )}
           </View>
@@ -257,6 +239,15 @@ export default function SignupScreen({ navigation }) {
           <Text style={styles.footerText}>By signing up, you agree to our Terms & Privacy Policy</Text>
         </View>
       </ScrollView>
+
+      <CustomAlert
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={hideAlert}
+        confirmText={alertState.confirmText}
+      />
     </SafeAreaView>
   );
 }

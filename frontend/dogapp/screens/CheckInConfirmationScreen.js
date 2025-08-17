@@ -8,13 +8,17 @@ import {
   Alert,
   Platform,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { Image } from 'expo-image';
 import DogParkService from '../services/DogParkService';
+import FriendService from '../services/FriendService';
 import { useAuth } from '../contexts/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import io from 'socket.io-client';
+import CustomAlert from '../components/CustomAlert';
+import { useAlerts } from '../components/useCustomAlert';
 
 export default function CheckInConfirmationScreen({ route, navigation }) {
   const { park, checkedInDogs } = route.params;
@@ -23,6 +27,11 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
   const [otherDogs, setOtherDogs] = useState([]);
   const [loadingOtherDogs, setLoadingOtherDogs] = useState(true);
   const [socket, setSocket] = useState(null);
+  const [friendRequests, setFriendRequests] = useState({}); // Track friend request states
+  const { alertState, hideAlert, showError, showSuccess, showInfo } = useAlerts();
+  const [friendSelectModalVisible, setFriendSelectModalVisible] = useState(false);
+  const [selectedFriendDog, setSelectedFriendDog] = useState(null);
+  const [checkoutConfirmVisible, setCheckoutConfirmVisible] = useState(false);
 
   useEffect(() => {
     setupLiveUpdates();
@@ -132,6 +141,11 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
   };
 
   const handleCheckOut = async () => {
+    setCheckoutConfirmVisible(true);
+  };
+
+  const confirmCheckOut = async () => {
+    setCheckoutConfirmVisible(false);
     console.log('🚪 Frontend: handleCheckOut called');
     try {
       setLoading(true);
@@ -141,32 +155,6 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
       console.log('🚪 Frontend: Dog names:', dogNames);
       console.log('🚪 Frontend: Dog IDs:', dogIds);
       console.log('🚪 Frontend: Park ID:', park.id);
-      
-      if (Platform.OS === 'web') {
-        const confirmed = window.confirm(`Check out ${dogNames} from ${park.name}?`);
-        if (!confirmed) {
-          console.log('🚪 Frontend: User cancelled checkout');
-          setLoading(false);
-          return;
-        }
-      } else {
-        const confirmed = await new Promise((resolve) => {
-          Alert.alert(
-            'Check Out',
-            `Check out ${dogNames} from ${park.name}?`,
-            [
-              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-              { text: 'Check Out', onPress: () => resolve(true) },
-            ]
-          );
-        });
-        
-        if (!confirmed) {
-          console.log('🚪 Frontend: User cancelled checkout');
-          setLoading(false);
-          return;
-        }
-      }
 
       console.log('🚪 Frontend: User confirmed checkout, calling API...');
       // Call the backend to check out the dogs
@@ -175,36 +163,59 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
       console.log('🚪 Frontend: API response:', result);
       if (result.success) {
         const successMessage = `Successfully checked out ${dogNames} from ${park.name}! 🐾`;
+        showSuccess(successMessage, 'Success! 🐾');
         
-        if (Platform.OS === 'web') {
-          window.alert(successMessage);
-        } else {
-          Alert.alert('Success! 🐾', successMessage);
-        }
-        
-        navigation.goBack();
+        setTimeout(() => {
+          navigation.goBack();
+        }, 2000);
       } else {
         const errorMessage = result.error || 'Failed to check out. Please try again.';
-        
-        if (Platform.OS === 'web') {
-          window.alert(errorMessage);
-        } else {
-          Alert.alert('Error', errorMessage);
-        }
+        showError(errorMessage);
       }
     } catch (error) {
       console.error('🚪 Frontend: Error during check-out:', error);
-      const errorMessage = 'Failed to check out. Please try again.';
-      
-      if (Platform.OS === 'web') {
-        window.alert(errorMessage);
-      } else {
-        Alert.alert('Error', errorMessage);
-      }
+      showError('Failed to check out. Please try again.');
     } finally {
       console.log('🚪 Frontend: Setting loading to false');
       setLoading(false);
     }
+  };
+
+  // Handle adding a friend
+  const handleAddFriend = async (myDogId, friendDogId, friendDogName) => {
+    try {
+      setFriendRequests(prev => ({ ...prev, [`${myDogId}-${friendDogId}`]: true }));
+      
+      console.log('🤝 Attempting to add friend:', myDogId, 'wants to befriend', friendDogId);
+      
+      const result = await FriendService.addFriend(myDogId, friendDogId);
+      
+      if (result.success) {
+        const successMessage = result.message || `Successfully added ${friendDogName} as a friend! 🐕❤️🐕`;
+        showSuccess(successMessage, 'New Friend! 🐕❤️🐕');
+      } else {
+        const errorMessage = result.error || 'Failed to add friend. Please try again.';
+        showError(errorMessage);
+      }
+    } catch (error) {
+      console.error('Error adding friend:', error);
+      showError('Failed to add friend. Please try again.');
+    } finally {
+      setFriendRequests(prev => ({ ...prev, [`${myDogId}-${friendDogId}`]: false }));
+    }
+  };
+
+  // Show friend request modal for selecting which dog to use for the friend request
+  const showFriendRequestOptions = (friendDog) => {
+    if (checkedInDogs.length === 1) {
+      // If only one dog, directly add friend
+      handleAddFriend(checkedInDogs[0].id, friendDog.id, friendDog.name);
+      return;
+    }
+
+    // If multiple dogs, show selection modal
+    setSelectedFriendDog(friendDog);
+    setFriendSelectModalVisible(true);
   };
 
   // Prevent back navigation on this screen (mobile only)
@@ -255,7 +266,12 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={true}
+      >
         <View style={styles.header}>
           <Text style={styles.title}>✅ Successfully Checked In!</Text>
           <Text style={styles.subtitle}>You're all set at {park.name}</Text>
@@ -300,7 +316,7 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
                 <Text style={styles.loadingText}>Loading other dogs...</Text>
               </View>
             ) : otherDogs.length > 0 ? (
-              <ScrollView style={styles.otherDogsList} showsVerticalScrollIndicator={false}>
+              <View style={styles.otherDogsContainer}>
                 {otherDogs.map((dog) => (
                   <View key={dog.id} style={styles.otherDogItem}>
                     {/* Dog Image/Emoji on the left */}
@@ -327,7 +343,7 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
                       )}
                     </View>
                     
-                    {/* Dog Info on the right */}
+                    {/* Dog Info in the middle */}
                     <View style={styles.otherDogInfo}>
                       <Text style={styles.otherDogName} numberOfLines={1} ellipsizeMode="tail">
                         {dog.name || 'Unknown Dog'}
@@ -336,9 +352,23 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
                         Energy: {getSimpleEnergyLevel(dog.energy_level)}
                       </Text>
                     </View>
+
+                    {/* Add Friend Button on the right */}
+                    <TouchableOpacity
+                      style={[
+                        styles.addFriendButton,
+                        friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`] && styles.buttonDisabled
+                      ]}
+                      onPress={() => showFriendRequestOptions(dog)}
+                      disabled={friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`]}
+                    >
+                      <Text style={styles.addFriendButtonText}>
+                        {friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`] ? '⏳' : '🤝'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 ))}
-              </ScrollView>
+              </View>
             ) : (
               <View style={styles.noDogs}>
                 <Text style={styles.noDogsText}>No other dogs at the park right now</Text>
@@ -367,7 +397,68 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
           <Text style={styles.tipText}>• Make sure to clean up after your pets</Text>
           <Text style={styles.tipText}>• Supervise interactions with other dogs</Text>
         </View>
-      </View>
+
+        {/* Bottom padding for better scrolling */}
+        <View style={styles.bottomPadding} />
+      </ScrollView>
+
+      <CustomAlert
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={hideAlert}
+        confirmText={alertState.confirmText}
+      />
+
+      {/* Checkout Confirmation Modal */}
+      <CustomAlert
+        visible={checkoutConfirmVisible}
+        title="Check Out"
+        message={`Check out ${checkedInDogs.map(dog => dog.name).join(', ')} from ${park.name}?`}
+        type="warning"
+        onClose={() => setCheckoutConfirmVisible(false)}
+        confirmText="Check Out"
+        onConfirm={confirmCheckOut}
+      />
+
+      {/* Friend Selection Modal */}
+      {friendSelectModalVisible && selectedFriendDog && (
+        <Modal
+          transparent={true}
+          visible={friendSelectModalVisible}
+          animationType="fade"
+          onRequestClose={() => setFriendSelectModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Add {selectedFriendDog.name} as Friend</Text>
+              <Text style={styles.modalSubtitle}>Which of your dogs wants to make a new friend?</Text>
+              
+              {checkedInDogs.map((dog) => (
+                <TouchableOpacity
+                  key={dog.id}
+                  style={styles.dogSelectionItem}
+                  onPress={() => {
+                    setFriendSelectModalVisible(false);
+                    handleAddFriend(dog.id, selectedFriendDog.id, selectedFriendDog.name);
+                  }}
+                >
+                  <Text style={styles.dogSelectionEmoji}>{dog.emoji || '🐕'}</Text>
+                  <Text style={styles.dogSelectionName}>{dog.name}</Text>
+                </TouchableOpacity>
+              ))}
+              
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setFriendSelectModalVisible(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -377,8 +468,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F9FA',
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  scrollContent: {
     padding: 20,
   },
   header: {
@@ -542,7 +635,7 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 14,
   },
-  otherDogsList: {
+  otherDogsContainer: {
     maxHeight: 200,
   },
   otherDogItem: {
@@ -620,5 +713,77 @@ const styles = StyleSheet.create({
     color: '#00796B',
     fontSize: 14,
     marginTop: 5,
+  },
+  addFriendButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addFriendButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  dogSelectionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    backgroundColor: '#E8F5E8',
+    borderRadius: 10,
+    marginBottom: 10,
+    width: '100%',
+  },
+  dogSelectionEmoji: {
+    fontSize: 28,
+    marginRight: 10,
+  },
+  dogSelectionName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  cancelButton: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: '#FF6B6B',
+    borderRadius: 8,
+  },
+  cancelButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  bottomPadding: {
+    height: 20,
   },
 });
