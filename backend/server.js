@@ -60,6 +60,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-t
 const usersCollection = db.collection('test_users');
 const dogsCollection = db.collection('dogs'); // Changed to match your actual collection name
 const dogParksCollection = db.collection('test_dogparks');
+const friendRequestsCollection = db.collection('friend_requests'); // Add friend requests collection
+const notificationsCollection = db.collection('notifications'); // Add notifications collection
 
 // Middleware to verify JWT token
 const authenticateToken = (req, res, next) => {
@@ -1164,7 +1166,7 @@ app.post('/api/dogs/:dogId/friends/:friendDogId', authenticateToken, async (req,
     }
 
     // Check if a friend request already exists (in either direction)
-    const existingRequestsSnapshot = await db.collection('friend_requests')
+    const existingRequestsSnapshot = await friendRequestsCollection
       .where('status', '==', 'pending')
       .get();
 
@@ -1185,7 +1187,7 @@ app.post('/api/dogs/:dogId/friends/:friendDogId', authenticateToken, async (req,
     }
 
     // Create friend request
-    const friendRequestDoc = await db.collection('friend_requests').add({
+    const friendRequestDoc = await friendRequestsCollection.add({
       from_dog_id: dogId,
       to_dog_id: friendDogId,
       from_user_id: req.user.userId,
@@ -1197,7 +1199,7 @@ app.post('/api/dogs/:dogId/friends/:friendDogId', authenticateToken, async (req,
     });
 
     // Create notification for the friend dog's owner
-    await db.collection('notifications').add({
+    await notificationsCollection.add({
       user_id: friendDogData.owner_id,
       type: 'friend_request',
       title: 'New Friend Request!',
@@ -1249,7 +1251,7 @@ app.post('/api/friend-requests/:requestId/accept', authenticateToken, async (req
     console.log(`✅ Accepting friend request: ${requestId}`);
 
     // Get the friend request
-    const requestDoc = await db.collection('friend_requests').doc(requestId).get();
+    const requestDoc = await friendRequestsCollection.doc(requestId).get();
     
     if (!requestDoc.exists) {
       return res.status(404).json({ 
@@ -1308,13 +1310,13 @@ app.post('/api/friend-requests/:requestId/accept', authenticateToken, async (req
     ]);
 
     // Update friend request status
-    await db.collection('friend_requests').doc(requestId).update({
+    await friendRequestsCollection.doc(requestId).update({
       status: 'accepted',
       updated_at: serverTimestamp()
     });
 
     // Create notification for the requester
-    await db.collection('notifications').add({
+    await notificationsCollection.add({
       user_id: requestData.from_user_id,
       type: 'friend_request_accepted',
       title: 'Friend Request Accepted!',
@@ -1364,7 +1366,7 @@ app.post('/api/friend-requests/:requestId/decline', authenticateToken, async (re
     console.log(`❌ Declining friend request: ${requestId}`);
 
     // Get the friend request
-    const requestDoc = await db.collection('friend_requests').doc(requestId).get();
+    const requestDoc = await friendRequestsCollection.doc(requestId).get();
     
     if (!requestDoc.exists) {
       return res.status(404).json({ 
@@ -1392,7 +1394,7 @@ app.post('/api/friend-requests/:requestId/decline', authenticateToken, async (re
     }
 
     // Update friend request status
-    await db.collection('friend_requests').doc(requestId).update({
+    await friendRequestsCollection.doc(requestId).update({
       status: 'declined',
       updated_at: serverTimestamp()
     });
@@ -1418,7 +1420,7 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
     console.log(`📱 Getting notifications for user: ${req.user.userId}`);
 
-    const notificationsSnapshot = await db.collection('notifications')
+    const notificationsSnapshot = await notificationsCollection
       .where('user_id', '==', req.user.userId)
       .orderBy('created_at', 'desc')
       .limit(50)
@@ -1457,7 +1459,7 @@ app.put('/api/notifications/:notificationId/read', authenticateToken, async (req
     console.log(`📖 Marking notification as read: ${notificationId}`);
 
     // Get the notification
-    const notificationDoc = await db.collection('notifications').doc(notificationId).get();
+    const notificationDoc = await notificationsCollection.doc(notificationId).get();
     
     if (!notificationDoc.exists) {
       return res.status(404).json({ 
@@ -1477,7 +1479,7 @@ app.put('/api/notifications/:notificationId/read', authenticateToken, async (req
     }
 
     // Update notification
-    await db.collection('notifications').doc(notificationId).update({
+    await notificationsCollection.doc(notificationId).update({
       read: true,
       updated_at: serverTimestamp()
     });
@@ -1503,10 +1505,10 @@ app.get('/api/friend-requests/pending', authenticateToken, async (req, res) => {
   try {
     console.log(`🤝 Getting pending friend requests for user: ${req.user.userId}`);
 
-    const requestsSnapshot = await db.collection('friend_requests')
+    // Simplified query without orderBy to avoid composite index requirement
+    const requestsSnapshot = await friendRequestsCollection
       .where('to_user_id', '==', req.user.userId)
       .where('status', '==', 'pending')
-      .orderBy('created_at', 'desc')
       .get();
 
     const pendingRequests = [];
@@ -1544,6 +1546,13 @@ app.get('/api/friend-requests/pending', authenticateToken, async (req, res) => {
         });
       }
     }
+
+    // Sort by created_at in JavaScript instead of Firestore
+    pendingRequests.sort((a, b) => {
+      const aTime = a.created_at?.toDate?.() || new Date(0);
+      const bTime = b.created_at?.toDate?.() || new Date(0);
+      return bTime - aTime; // Newest first
+    });
 
     console.log(`✅ Found ${pendingRequests.length} pending friend requests`);
 

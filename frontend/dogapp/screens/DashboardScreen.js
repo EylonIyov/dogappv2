@@ -200,16 +200,17 @@ export default function DashboardScreen({ navigation }) {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerContent}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.welcomeText}>Welcome to your pack! 🎾</Text>
-              <Text style={styles.subText}>
-                {currentUser?.fullName && `${currentUser.fullName} • `}
-                {dogs.length === 0 
-                  ? "You haven't added any dogs yet" 
-                  : `You have ${dogs.length} furry friend${dogs.length > 1 ? 's' : ''}`
-                }
-              </Text>
+            <TouchableOpacity
+              style={styles.notificationButton}
+              onPress={() => navigation.navigate('Notifications')}
+            >
+              <Text style={styles.notificationText}>🔔</Text>
+            </TouchableOpacity>
+            
+            <View style={styles.headerCenter}>
+              <Text style={styles.welcomeText}>Manage Your Dogs🐶</Text>
             </View>
+            
             <TouchableOpacity
               style={styles.menuButton}
               onPress={() => {
@@ -218,13 +219,6 @@ export default function DashboardScreen({ navigation }) {
               }}
             >
               <Text style={styles.menuText}>☰</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.notificationButton}
-              onPress={() => navigation.navigate('Notifications')}
-            >
-              <Text style={styles.notificationText}>🔔</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -413,15 +407,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-  headerLeft: {
+  headerCenter: {
     flex: 1,
+    alignItems: 'center',
   },
   welcomeText: {
-    fontSize: 24,
+    fontSize: 30,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'left',
-    marginBottom: 8,
+    color: 'black',
+    textAlign: 'center',
+    marginBottom: 0,
   },
   subText: {
     fontSize: 16,
