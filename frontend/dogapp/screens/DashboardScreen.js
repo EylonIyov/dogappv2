@@ -6,15 +6,15 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Dimensions,
   Platform,
   Animated
 } from 'react-native';
-import { Image } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import DogService from '../services/DogService';
+import CustomAlert, { DogImage } from '../components/CustomAlert';
+import { useAlerts } from '../components/useCustomAlert';
 
 const { width } = Dimensions.get('window');
 
@@ -23,7 +23,11 @@ const DogCard = memo(({ dog, onPressProfile, onPressEdit, onPressDelete }) => (
   <TouchableOpacity style={styles.dogCard} onPress={() => onPressProfile(dog)}>
     <View style={styles.dogHeader}>
       {dog.photo_url ? (
-        <Image source={{ uri: dog.photo_url }} style={styles.dogPhoto} contentFit="cover" cachePolicy="memory-disk" placeholder="🐕" transition={200} />
+        <DogImage 
+          source={{ uri: dog.photo_url }} 
+          style={styles.dogPhoto} 
+          placeholder={dog.emoji || '🐕'} 
+        />
       ) : (
         <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
       )}
@@ -49,8 +53,10 @@ export default function DashboardScreen({ navigation }) {
   const [dogs, setDogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showMainMenu, setShowMainMenu] = useState(false);
-  // Animation value for menu
   const menuAnim = useRef(new Animated.Value(0)).current;
+  const { alertState, hideAlert, showError, showSuccess, showInfo } = useAlerts();
+  const [confirmDelete, setConfirmDelete] = useState({ visible: false, dogId: null });
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   // Reload dogs when screen comes into focus (when returning from other screens)
   useFocusEffect(
@@ -83,11 +89,11 @@ export default function DashboardScreen({ navigation }) {
         setDogs(result.dogs);
       } else {
         console.error('❌ Failed to load dogs:', result.error);
-        Alert.alert('Error', result.error || 'Failed to load dogs');
+        showError(result.error || 'Failed to load dogs');
       }
     } catch (error) {
       console.error('💥 Error loading dogs:', error);
-      Alert.alert('Error', 'Failed to load dogs. Please try again.');
+      showError('Failed to load dogs. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -95,48 +101,29 @@ export default function DashboardScreen({ navigation }) {
 
   const deleteDog = async (dogId) => {
     if (Platform.OS === 'web') {
-      // Web: use window.confirm to avoid blocking
-      const confirmed = window.confirm('Are you sure you want to delete this dog profile?');
-      if (!confirmed) return;
-      try {
-        const result = await DogService.deleteDog(dogId);
-        if (result.success) {
-          setDogs(dogs.filter(dog => dog.id !== dogId));
-          window.alert('Dog profile deleted successfully');
-        } else {
-          window.alert(result.error || 'Failed to delete dog');
-        }
-      } catch (error) {
-        console.error('Error deleting dog:', error);
-        window.alert('Failed to delete dog. Please try again.');
-      }
+      // Web: use custom alert instead of window.confirm/alert
+      setConfirmDelete({ visible: true, dogId });
     } else {
-      // Native: use Alert.alert for confirmation dialog
-      Alert.alert(
-        'Delete Dog Profile',
-        'Are you sure you want to delete this dog profile?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                const result = await DogService.deleteDog(dogId);
-                if (result.success) {
-                  setDogs(dogs.filter(dog => dog.id !== dogId));
-                  Alert.alert('Success', 'Dog profile deleted successfully');
-                } else {
-                  Alert.alert('Error', result.error || 'Failed to delete dog');
-                }
-              } catch (error) {
-                console.error('Error deleting dog:', error);
-                Alert.alert('Error', 'Failed to delete dog. Please try again.');
-              }
-            },
-          },
-        ]
-      );
+      // Native: use custom alert for confirmation dialog
+      setConfirmDelete({ visible: true, dogId });
+    }
+  };
+
+  const confirmDeleteDog = async () => {
+    const dogId = confirmDelete.dogId;
+    setConfirmDelete({ visible: false, dogId: null });
+    
+    try {
+      const result = await DogService.deleteDog(dogId);
+      if (result.success) {
+        setDogs(dogs.filter(dog => dog.id !== dogId));
+        showSuccess('Dog profile deleted successfully');
+      } else {
+        showError(result.error || 'Failed to delete dog');
+      }
+    } catch (error) {
+      console.error('Error deleting dog:', error);
+      showError('Failed to delete dog. Please try again.');
     }
   };
 
@@ -148,7 +135,7 @@ export default function DashboardScreen({ navigation }) {
         await logout();
       } catch (error) {
         console.error('Logout error:', error);
-        Alert.alert('Error', 'Failed to logout. Please try again.');
+        showError('Failed to logout. Please try again.');
       }
     };
 
@@ -158,18 +145,18 @@ export default function DashboardScreen({ navigation }) {
       performLogout();
     } else {
       // On native, we show a confirmation dialog.
-      Alert.alert(
-        'Logout',
-        'Are you sure you want to logout?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Logout',
-            style: 'destructive',
-            onPress: performLogout,
-          },
-        ]
-      );
+      setConfirmLogout(true);
+    }
+  };
+
+  const confirmLogoutAction = async () => {
+    setConfirmLogout(false);
+    try {
+      closeMenu();
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+      showError('Failed to logout. Please try again.');
     }
   };
 
@@ -231,6 +218,13 @@ export default function DashboardScreen({ navigation }) {
               }}
             >
               <Text style={styles.menuText}>☰</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.notificationButton}
+              onPress={() => navigation.navigate('Notifications')}
+            >
+              <Text style={styles.notificationText}>🔔</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -363,6 +357,39 @@ export default function DashboardScreen({ navigation }) {
           <Text style={styles.addButtonText}>+ Add New Dog</Text>
         </TouchableOpacity>
       </View>
+
+      <CustomAlert
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={hideAlert}
+        confirmText={alertState.confirmText}
+      />
+
+      <CustomAlert
+        visible={confirmDelete.visible}
+        title="Delete Dog Profile"
+        message="Are you sure you want to delete this dog profile?"
+        type="warning"
+        showCancel={true}
+        onClose={() => setConfirmDelete({ visible: false, dogId: null })}
+        onConfirm={confirmDeleteDog}
+        confirmText="Delete"
+        cancelText="Cancel"
+      />
+
+      <CustomAlert
+        visible={confirmLogout}
+        title="Logout"
+        message="Are you sure you want to logout?"
+        type="warning"
+        showCancel={true}
+        onClose={() => setConfirmLogout(false)}
+        onConfirm={confirmLogoutAction}
+        confirmText="Logout"
+        cancelText="Cancel"
+      />
     </SafeAreaView>
   );
 }
@@ -406,6 +433,15 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   menuText: {
+    color: '#FFFFFF',
+    fontSize: 24,
+  },
+  notificationButton: {
+    backgroundColor: 'transparent',
+    padding: 10,
+    marginLeft: 10,
+  },
+  notificationText: {
     color: '#FFFFFF',
     fontSize: 24,
   },

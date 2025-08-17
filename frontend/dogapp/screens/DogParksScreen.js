@@ -6,13 +6,13 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import { Image } from 'expo-image';
 import DogParkService from '../services/DogParkService';
 import DogService from '../services/DogService';
+import CustomAlert, { DogImage } from '../components/CustomAlert';
+import { useAlerts } from '../components/useCustomAlert';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function DogParksScreen({ navigation }) {
@@ -23,6 +23,7 @@ export default function DogParksScreen({ navigation }) {
   const [showDogSelection, setShowDogSelection] = useState(false);
   const [selectedPark, setSelectedPark] = useState(null);
   const [selectedDogs, setSelectedDogs] = useState([]);
+  const { alertState, hideAlert, showError, showSuccess, showInfo } = useAlerts();
 
   useEffect(() => {
     loadParks();
@@ -40,19 +41,11 @@ export default function DogParksScreen({ navigation }) {
         setParks(result.parks);
       } else {
         console.error('❌ Failed to load parks:', result.error);
-        if (Platform.OS === 'web') {
-          window.alert(result.error || 'Failed to load dog parks');
-        } else {
-          Alert.alert('Error', result.error || 'Failed to load dog parks');
-        }
+        showError(result.error || 'Failed to load dog parks');
       }
     } catch (error) {
       console.error('Error loading parks:', error);
-      if (Platform.OS === 'web') {
-        window.alert('Failed to load dog parks. Please try again.');
-      } else {
-        Alert.alert('Error', 'Failed to load dog parks. Please try again.');
-      }
+      showError('Failed to load dog parks. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -76,11 +69,7 @@ export default function DogParksScreen({ navigation }) {
 
   const handleCheckIn = (park) => {
     if (dogs.length === 0) {
-      if (Platform.OS === 'web') {
-        window.alert('You need to add at least one dog before checking in at parks.');
-      } else {
-        Alert.alert('No Dogs Found', 'You need to add at least one dog before checking in at parks.');
-      }
+      showError('You need to add at least one dog before checking in at parks.', 'No Dogs Found');
       return;
     }
     
@@ -91,11 +80,7 @@ export default function DogParksScreen({ navigation }) {
 
   const confirmCheckIn = () => {
     if (selectedDogs.length === 0) {
-      if (Platform.OS === 'web') {
-        window.alert('Please select at least one dog to check in.');
-      } else {
-        Alert.alert('No Dogs Selected', 'Please select at least one dog to check in.');
-      }
+      showError('Please select at least one dog to check in.', 'No Dogs Selected');
       return;
     }
 
@@ -121,19 +106,11 @@ export default function DogParksScreen({ navigation }) {
         
         setSelectedDogs([]);
       } else {
-        if (Platform.OS === 'web') {
-          window.alert(result.error || 'Failed to check in dogs');
-        } else {
-          Alert.alert('Error', result.error || 'Failed to check in dogs');
-        }
+        showError(result.error || 'Failed to check in dogs');
       }
     } catch (error) {
       console.error('Error during check-in:', error);
-      if (Platform.OS === 'web') {
-        window.alert('Failed to check in dogs. Please try again.');
-      } else {
-        Alert.alert('Error', 'Failed to check in dogs. Please try again.');
-      }
+      showError('Failed to check in dogs. Please try again.');
     }
   };
 
@@ -173,18 +150,11 @@ export default function DogParksScreen({ navigation }) {
                   onPress={() => toggleDogSelection(dog)}
                 >
                   <View style={styles.dogItemContent}>
-                    {dog.photo_url ? (
-                      <Image
-                        source={{ uri: dog.photo_url }}
-                        style={styles.dogPhoto}
-                        contentFit="cover"
-                        cachePolicy="memory-disk"
-                        placeholder="🐕"
-                        transition={200}
-                      />
-                    ) : (
-                      <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
-                    )}
+                    <DogImage
+                      source={{ uri: dog.photo_url }}
+                      style={styles.dogPhoto}
+                      placeholder={dog.emoji || '🐕'}
+                    />
                     <View style={styles.dogItemInfo}>
                       <Text style={styles.dogItemName}>{dog.name}</Text>
                       <Text style={styles.dogItemBreed}>{dog.breed}</Text>
@@ -250,11 +220,7 @@ export default function DogParksScreen({ navigation }) {
           style={styles.directionsButton}
           onPress={() => {
             // Future: Open maps/directions
-            if (Platform.OS === 'web') {
-              window.alert('Directions feature coming soon!');
-            } else {
-              Alert.alert('Info', 'Directions feature coming soon!');
-            }
+            showInfo('Directions feature coming soon!', 'Info');
           }}
         >
           <Text style={styles.directionsButtonText}>🗺️ Directions</Text>
@@ -287,6 +253,15 @@ export default function DogParksScreen({ navigation }) {
       )}
 
       <DogSelectionModal />
+
+      <CustomAlert
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={hideAlert}
+        confirmText={alertState.confirmText}
+      />
     </SafeAreaView>
   );
 }

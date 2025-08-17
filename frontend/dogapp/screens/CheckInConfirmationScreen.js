@@ -5,19 +5,17 @@ import {
   View,
   SafeAreaView,
   TouchableOpacity,
-  Alert,
   Platform,
   ScrollView,
   Modal,
 } from 'react-native';
-import { Image } from 'expo-image';
 import DogParkService from '../services/DogParkService';
 import FriendService from '../services/FriendService';
 import { useAuth } from '../contexts/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import io from 'socket.io-client';
-import CustomAlert from '../components/CustomAlert';
+import CustomAlert, { DogImage } from '../components/CustomAlert';
 import { useAlerts } from '../components/useCustomAlert';
 
 export default function CheckInConfirmationScreen({ route, navigation }) {
@@ -186,20 +184,20 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
     try {
       setFriendRequests(prev => ({ ...prev, [`${myDogId}-${friendDogId}`]: true }));
       
-      console.log('🤝 Attempting to add friend:', myDogId, 'wants to befriend', friendDogId);
+      console.log('🤝 Attempting to send friend request:', myDogId, 'wants to befriend', friendDogId);
       
-      const result = await FriendService.addFriend(myDogId, friendDogId);
+      const result = await FriendService.sendFriendRequest(myDogId, friendDogId);
       
       if (result.success) {
-        const successMessage = result.message || `Successfully added ${friendDogName} as a friend! 🐕❤️🐕`;
-        showSuccess(successMessage, 'New Friend! 🐕❤️🐕');
+        const successMessage = result.message || `Friend request sent to ${friendDogName}'s owner! 🐕💌`;
+        showSuccess(successMessage, 'Friend Request Sent! 🐕💌');
       } else {
-        const errorMessage = result.error || 'Failed to add friend. Please try again.';
+        const errorMessage = result.error || 'Failed to send friend request. Please try again.';
         showError(errorMessage);
       }
     } catch (error) {
-      console.error('Error adding friend:', error);
-      showError('Failed to add friend. Please try again.');
+      console.error('Error sending friend request:', error);
+      showError('Failed to send friend request. Please try again.');
     } finally {
       setFriendRequests(prev => ({ ...prev, [`${myDogId}-${friendDogId}`]: false }));
     }
@@ -287,18 +285,11 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
             <Text style={styles.sectionTitle}>Your Dogs Checked In:</Text>
             {checkedInDogs.map((dog, index) => (
               <View key={dog.id} style={styles.dogItem}>
-                {dog.photo_url ? (
-                  <Image
-                    source={{ uri: dog.photo_url }}
-                    style={styles.dogPhoto}
-                    contentFit="cover"
-                    cachePolicy="memory-disk"
-                    placeholder="🐕"
-                    transition={200}
-                  />
-                ) : (
-                  <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
-                )}
+                <DogImage
+                  source={{ uri: dog.photo_url }}
+                  style={styles.dogPhoto}
+                  placeholder={dog.emoji || '🐕'}
+                />
                 <View style={styles.dogInfo}>
                   <Text style={styles.dogName}>{dog.name}</Text>
                   <Text style={styles.dogBreed}>{dog.breed}</Text>
@@ -321,26 +312,11 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
                   <View key={dog.id} style={styles.otherDogItem}>
                     {/* Dog Image/Emoji on the left */}
                     <View style={styles.otherDogImageContainer}>
-                      {dog.photo_url && dog.photo_url !== '' && dog.photo_url !== '/' && dog.photo_url !== 'null' && dog.photo_url !== 'undefined' ? (
-                        <Image
-                          source={{ uri: dog.photo_url }}
-                          style={styles.otherDogPhoto}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-                          transition={200}
-                          onError={(error) => {
-                            console.log('❌ Failed to load image for dog:', dog.name, 'URL:', dog.photo_url, 'Error:', error);
-                          }}
-                          onLoad={() => {
-                            console.log('✅ Successfully loaded image for dog:', dog.name);
-                          }}
-                        />
-                      ) : (
-                        <View style={styles.dogEmojiContainer}>
-                          <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
-                        </View>
-                      )}
+                      <DogImage
+                        source={{ uri: dog.photo_url }}
+                        style={styles.otherDogPhoto}
+                        placeholder={dog.emoji || '🐕'}
+                      />
                     </View>
                     
                     {/* Dog Info in the middle */}
@@ -363,7 +339,7 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
                       disabled={friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`]}
                     >
                       <Text style={styles.addFriendButtonText}>
-                        {friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`] ? '⏳' : '🤝'}
+                        {friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`] ? 'Adding...' : 'Add Friend'}
                       </Text>
                     </TouchableOpacity>
                   </View>

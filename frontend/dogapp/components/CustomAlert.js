@@ -6,9 +6,54 @@ import {
   TouchableOpacity,
   Modal,
   Dimensions,
+  Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 
 const { width, height } = Dimensions.get('window');
+
+// Utility function to validate image URLs
+const isValidImageUrl = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  
+  // Remove common invalid values
+  const invalidValues = ['', '/', 'null', 'undefined', 'none', 'N/A'];
+  if (invalidValues.includes(url.toLowerCase().trim())) return false;
+  
+  // Check if it's a valid URL format
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    // If URL constructor fails, check for relative paths or other valid formats
+    return url.startsWith('/') || url.startsWith('./') || url.startsWith('http') || url.startsWith('data:');
+  }
+};
+
+// Enhanced Image component with better error handling for web
+const DogImage = ({ source, style, placeholder = '🐕', ...props }) => {
+  if (!source?.uri || !isValidImageUrl(source.uri)) {
+    return <Text style={[style, { textAlign: 'center', textAlignVertical: 'center' }]}>{placeholder}</Text>;
+  }
+
+  return (
+    <Image
+      source={source}
+      style={style}
+      contentFit="cover"
+      cachePolicy={Platform.OS === 'web' ? 'none' : 'memory-disk'}
+      placeholder={placeholder}
+      transition={200}
+      onError={(error) => {
+        console.log('❌ Image load error:', source.uri, error);
+      }}
+      onLoad={() => {
+        console.log('✅ Image loaded successfully:', source.uri);
+      }}
+      {...props}
+    />
+  );
+};
 
 const CustomAlert = ({ 
   visible, 
@@ -173,3 +218,4 @@ const styles = StyleSheet.create({
 });
 
 export default CustomAlert;
+export { isValidImageUrl, DogImage };

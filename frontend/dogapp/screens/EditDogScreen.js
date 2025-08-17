@@ -6,20 +6,21 @@ import {
   TouchableOpacity,
   View,
   ScrollView,
-  Alert,
   Platform,
 } from 'react-native';
 import DogService from '../services/DogService';
+import CustomAlert from '../components/CustomAlert';
+import { useAlerts } from '../components/useCustomAlert';
 
 export default function EditDogScreen({ route, navigation }) {
   const { dog } = route.params;
   const [dogData, setDogData] = useState({
-    name: dog.name || '',
-    breed: dog.breed || '',
-    age: dog.age ? dog.age.toString() : '', // Convert age to string for TextInput
-    energyLevel: dog.energy_level || dog.energyLevel || '', // Handle both snake_case and camelCase
-    playStyle: dog.play_style || dog.playStyle || [], // Handle both snake_case and camelCase
-    emoji: dog.emoji || '🐕',
+    name: dog?.name || '',
+    breed: dog?.breed || '',
+    age: dog?.age?.toString() || '',
+    energyLevel: dog?.energyLevel || '',
+    playStyle: dog?.playStyle || [],
+    emoji: dog?.emoji || '🐕',
   });
 
   // Auto-complete state
@@ -62,6 +63,8 @@ export default function EditDogScreen({ route, navigation }) {
     return data.length > 0 && timestamp && (Date.now() - timestamp < CACHE_DURATION);
   };
 
+  const { alertState, hideAlert, showError, showSuccess } = useAlerts();
+
   const fetchBreeds = async () => {
     try {
       setBreedsLoading(true);
@@ -75,7 +78,7 @@ export default function EditDogScreen({ route, navigation }) {
 
       const response = await fetch('http://localhost:3000/api/dog-breeds');
       const data = await response.json();
-      
+
       if (data.success) {
         // Update cache
         breedsCacheRef.current = {
@@ -84,11 +87,11 @@ export default function EditDogScreen({ route, navigation }) {
         };
         setAllBreeds(data.breeds);
       } else {
-        Alert.alert('Error', 'Failed to load dog breeds');
+        showError('Failed to load dog breeds');
       }
     } catch (error) {
       console.error('Error fetching breeds:', error);
-      Alert.alert('Error', 'Failed to load dog breeds. Please check your connection and try again.');
+      showError('Failed to load dog breeds. Please check your connection and try again.');
     } finally {
       setBreedsLoading(false);
     }
@@ -120,14 +123,14 @@ export default function EditDogScreen({ route, navigation }) {
   const handleSave = async () => {
     // Validation
     if (!dogData.name.trim() || !dogData.breed.trim() || !dogData.age.toString().trim()) {
-      Alert.alert('Missing Information', 'Please fill in at least the name, breed, and age fields.');
+      showError('Please fill in at least the name, breed, and age fields.', 'Missing Information');
       return;
     }
 
     // Validate age is a real number
     const ageNumber = parseFloat(dogData.age);
     if (isNaN(ageNumber) || ageNumber <= 0 || ageNumber > 30) {
-      Alert.alert('Invalid Age', 'Please enter a valid age between 0 and 30 years.');
+      showError('Please enter a valid age between 0 and 30 years.', 'Invalid Age');
       return;
     }
 
@@ -142,26 +145,23 @@ export default function EditDogScreen({ route, navigation }) {
         emoji: dogData.emoji,
       };
 
+      console.log('Updating dog with payload:', dogPayload);
+
       // Use DogService to update dog in Firestore
       const result = await DogService.updateDog(dog.id, dogPayload);
 
       if (result.success) {
-        Alert.alert(
-          'Success! 🎉',
+        showSuccess(
           `${dogData.name}'s profile has been updated!`,
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]
+          'Success! 🎉'
         );
+        // Navigation will happen when alert is closed via onClose callback
       } else {
-        Alert.alert('Error', result.error || 'Failed to update dog. Please try again.');
+        showError(result.error || 'Failed to update dog. Please try again.');
       }
     } catch (error) {
       console.error('Error updating dog:', error);
-      Alert.alert('Error', 'Failed to update dog profile. Please try again.');
+      showError('Failed to update dog profile. Please try again.');
     }
   };
 
@@ -327,6 +327,21 @@ export default function EditDogScreen({ route, navigation }) {
         {/* Bottom padding */}
         <View style={styles.bottomPadding} />
       </View>
+
+      <CustomAlert
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={() => {
+          hideAlert();
+          // Navigate back on success
+          if (alertState.type === 'success') {
+            navigation.goBack();
+          }
+        }}
+        confirmText={alertState.confirmText}
+      />
     </ScrollView>
   );
 }

@@ -6,48 +6,37 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
-import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import CustomAlert, { DogImage } from '../components/CustomAlert';
+import { useAlerts } from '../components/useCustomAlert';
 
 export default function DogProfileScreen({ route, navigation }) {
   const { dog } = route.params;
+  const { alertState, hideAlert, showError, showSuccess } = useAlerts();
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
 
   const deleteDog = async () => {
-    Alert.alert(
-      'Delete Dog Profile',
-      `Are you sure you want to delete ${dog.name}'s profile?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const existingDogs = await AsyncStorage.getItem('dogs');
-              const dogs = existingDogs ? JSON.parse(existingDogs) : [];
-              const updatedDogs = dogs.filter(d => d.id !== dog.id);
-              await AsyncStorage.setItem('dogs', JSON.stringify(updatedDogs));
-              
-              Alert.alert(
-                'Deleted',
-                `${dog.name}'s profile has been deleted.`,
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => navigation.navigate('Dashboard'),
-                  },
-                ]
-              );
-            } catch (error) {
-              console.error('Error deleting dog:', error);
-              Alert.alert('Error', 'Failed to delete dog profile.');
-            }
-          },
-        },
-      ]
-    );
+    setConfirmDelete(true);
+  };
+
+  const confirmDeleteDog = async () => {
+    setConfirmDelete(false);
+    try {
+      const existingDogs = await AsyncStorage.getItem('dogs');
+      const dogs = existingDogs ? JSON.parse(existingDogs) : [];
+      const updatedDogs = dogs.filter(d => d.id !== dog.id);
+      await AsyncStorage.setItem('dogs', JSON.stringify(updatedDogs));
+      
+      showSuccess(
+        `${dog.name}'s profile has been deleted.`,
+        'Deleted'
+      );
+      // Navigation will happen when alert is closed via onClose callback
+    } catch (error) {
+      console.error('Error deleting dog:', error);
+      showError('Failed to delete dog profile.');
+    }
   };
 
   const InfoCard = ({ icon, title, value, defaultText = 'Not specified' }) => (
@@ -71,18 +60,11 @@ export default function DogProfileScreen({ route, navigation }) {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header Section */}
         <View style={styles.header}>
-          {dog.photo_url && dog.photo_url !== '' ? (
-            <Image
-              source={{ uri: dog.photo_url }}
-              style={styles.dogProfilePhoto}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              placeholder="🐕"
-              transition={300}
-            />
-          ) : (
-            <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
-          )}
+          <DogImage
+            source={{ uri: dog.photo_url }}
+            style={styles.dogProfilePhoto}
+            placeholder={dog.emoji || '🐕'}
+          />
           <Text style={styles.dogName}>{dog.name}</Text>
           <Text style={styles.dogBreed}>{dog.breed}</Text>
           <Text style={styles.addedDate}>
@@ -164,6 +146,33 @@ export default function DogProfileScreen({ route, navigation }) {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+      <CustomAlert
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={() => {
+          hideAlert();
+          // Navigate back on success
+          if (alertState.type === 'success') {
+            navigation.navigate('Dashboard');
+          }
+        }}
+        confirmText={alertState.confirmText}
+      />
+
+      <CustomAlert
+        visible={confirmDelete}
+        title="Delete Dog Profile"
+        message={`Are you sure you want to delete ${dog.name}'s profile?`}
+        type="warning"
+        showCancel={true}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={confirmDeleteDog}
+        confirmText="Delete"
+        cancelText="Cancel"
+      />
     </SafeAreaView>
   );
 }
