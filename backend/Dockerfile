@@ -4,21 +4,20 @@ FROM node:18-alpine
 # Set working directory in container
 WORKDIR /app
 
+# Create non-root user for security first
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 -G nodejs
+
 # Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
 # Install dependencies
 RUN npm ci --only=production
 
-# Copy application code
-COPY . .
+# Copy application code and set ownership in one step
+COPY --chown=nodejs:nodejs . .
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
-
-# Change ownership of the app directory to nodejs user
-RUN chown -R nodejs:nodejs /app
+# Switch to non-root user
 USER nodejs
 
 # Expose port
