@@ -1,22 +1,26 @@
 ### Step 3: Configure Environment
 
 1. **Generate JWT Secret:**
+
    ```bash
    node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
    ```
 
 2. **Create Production Environment File:**
+
    ```bash
    cd /var/www/dogapp/backend
    cp .env.template .env
    ```
 
 3. **Edit the .env file with your values:**
+
    ```bash
    nano .env
    ```
-   
+
    Update these values:
+
    - `JWT_SECRET`: Your generated secret
    - `FRONTEND_URL`: Your frontend domain (e.g., https://yourapp.com)
    - `S3_BUCKET_NAME`: Your AWS S3 bucket name

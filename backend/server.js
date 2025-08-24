@@ -1667,9 +1667,19 @@ io.on('connection', (socket) => {
 });
 
 // Start server
-server.listen(PORT, () => {
-  console.log(`🐕 Dog App Backend running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
+const HOST = isProduction ? '0.0.0.0' : 'localhost';
+
+server.listen(PORT, HOST, () => {
+  console.log(`🐕 Dog App Backend running on ${HOST}:${PORT}`);
+  console.log(`Health check: http://${HOST}:${PORT}/health`);
+  
+  if (isProduction) {
+    console.log(`🌐 Production mode: Server accepting external connections`);
+    console.log(`🔗 External access: http://YOUR_EC2_PUBLIC_IP:${PORT}/health`);
+  } else {
+    console.log(`🏠 Development mode: Server listening on localhost only`);
+  }
+  
   console.log(`API Endpoints:`);
   console.log(`AUTH:`);
   console.log(`  POST http://localhost:${PORT}/api/auth/register`);
