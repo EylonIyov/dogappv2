@@ -96,5 +96,3 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
-
-backend/deployment/*
