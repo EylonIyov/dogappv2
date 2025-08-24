@@ -59,7 +59,7 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
       await loadOtherDogs();
       
       // Create WebSocket connection
-      const newSocket = io('http://localhost:3000');
+      const newSocket = io('http://ec2-16-171-173-92.eu-north-1.compute.amazonaws.com:3000');
       
       newSocket.on('connect', () => {
         console.log('🟢 WebSocket connected:', newSocket.id);

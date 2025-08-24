@@ -76,7 +76,7 @@ export default function EditDogScreen({ route, navigation }) {
         return;
       }
 
-      const response = await fetch('http://localhost:3000/api/dog-breeds');
+      const response = await fetch('http://ec2-16-171-173-92.eu-north-1.compute.amazonaws.com:3000/api/dog-breeds');
       const data = await response.json();
 
       if (data.success) {

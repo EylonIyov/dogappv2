@@ -7,7 +7,7 @@ export const useAuth = () => {
   return useContext(AuthContext);
 };
 
-const API_BASE_URL = 'http://localhost:3000/api'; // Change this to your backend URL
+const API_BASE_URL = 'http://ec2-16-171-173-92.eu-north-1.compute.amazonaws.com:3000/api';
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
