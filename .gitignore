@@ -1,18 +1,22 @@
-.env
+.env*
 .DS_Store
 backend/serviceAccountKey.json
 backend/node_modules
 
-# Environment variables
+# Environment variables (all variants)
 backend/.env
+backend/.env.*
 
 # Service account keys (security sensitive)
 backend/serviceAccountKey.json
 
 # Node modules (should always be ignored)
 backend/node_modules/
-
 frontend/dogapp/node_modules
+
+# Docker files (optional - you may want to track these)
+# backend/Dockerfile
+# backend/docker-compose.yml
 
 #ideas for implementation
 notes.txt
