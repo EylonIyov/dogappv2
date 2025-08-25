@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const API_BASE_URL = 'http://ec2-16-171-173-92.eu-north-1.compute.amazonaws.com:3000/api';
+import { getApiUrl, getApiConfig } from '../config';
 
 class FriendService {
   // Get auth token from AsyncStorage
@@ -14,6 +13,36 @@ class FriendService {
     }
   }
 
+  // Helper method to make API requests with retry logic
+  async makeApiRequest(endpoint, options = {}) {
+    const config = getApiConfig();
+    const url = getApiUrl(endpoint);
+    
+    let lastError;
+    
+    for (let attempt = 1; attempt <= config.retries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          timeout: config.timeout,
+          ...options,
+        });
+        
+        return response;
+      } catch (error) {
+        lastError = error;
+        console.warn(`API request attempt ${attempt} failed:`, error);
+        
+        // Don't retry on the last attempt
+        if (attempt === config.retries) {
+          throw lastError;
+        }
+        
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+      }
+    }
+  }
+
   // Send a friend request (replaces direct friend adding)
   async sendFriendRequest(dogId, friendDogId) {
     try {
@@ -24,7 +53,7 @@ class FriendService {
         throw new Error('No auth token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/dogs/${dogId}/friends/${friendDogId}`, {
+      const response = await this.makeApiRequest(`/api/dogs/${dogId}/friends/${friendDogId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -57,7 +86,7 @@ class FriendService {
         throw new Error('No auth token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/friend-requests/${requestId}/accept`, {
+      const response = await this.makeApiRequest(`/api/friend-requests/${requestId}/accept`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -90,7 +119,7 @@ class FriendService {
         throw new Error('No auth token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/friend-requests/${requestId}/decline`, {
+      const response = await this.makeApiRequest(`/api/friend-requests/${requestId}/decline`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -123,7 +152,7 @@ class FriendService {
         throw new Error('No auth token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/friend-requests/pending`, {
+      const response = await this.makeApiRequest('/api/friend-requests/pending', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -156,7 +185,7 @@ class FriendService {
         throw new Error('No auth token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/notifications`, {
+      const response = await this.makeApiRequest('/api/notifications', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -189,7 +218,7 @@ class FriendService {
         throw new Error('No auth token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+      const response = await this.makeApiRequest(`/api/notifications/${notificationId}/read`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -227,7 +256,7 @@ class FriendService {
         throw new Error('No auth token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/dogs/${dogId}/friends/${friendDogId}`, {
+      const response = await this.makeApiRequest(`/api/dogs/${dogId}/friends/${friendDogId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -260,7 +289,7 @@ class FriendService {
         throw new Error('No auth token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/dogs/${dogId}/friends`, {
+      const response = await this.makeApiRequest(`/api/dogs/${dogId}/friends`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,

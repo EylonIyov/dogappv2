@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const API_BASE_URL = 'http://ec2-16-171-173-92.eu-north-1.compute.amazonaws.com:3000/api';
+import { getApiUrl, getApiConfig } from '../config';
 
 // Helper function to get auth token
 const getAuthToken = async () => {
@@ -19,27 +18,50 @@ const getAuthToken = async () => {
   }
 };
 
-// Helper function to make authenticated requests
-const makeAuthenticatedRequest = async (url, options = {}) => {
+// Helper function to make authenticated requests with retry logic
+const makeAuthenticatedRequest = async (endpoint, options = {}) => {
+  const config = getApiConfig();
+  const url = getApiUrl(endpoint);
   const token = await getAuthToken();
+  
   console.log('🔑 Making authenticated request to:', url);
   console.log('🔑 Token available:', !!token);
   
-  return fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
-    },
-  });
+  let lastError;
+  
+  for (let attempt = 1; attempt <= config.retries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        timeout: config.timeout,
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { Authorization: `Bearer ${token}` }),
+          ...options.headers,
+        },
+      });
+      
+      return response;
+    } catch (error) {
+      lastError = error;
+      console.warn(`API request attempt ${attempt} failed:`, error);
+      
+      // Don't retry on the last attempt
+      if (attempt === config.retries) {
+        throw lastError;
+      }
+      
+      // Wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+    }
+  }
 };
 
 class DogParkService {
   static async getParks() {
     try {
       console.log('🏞️ Fetching dog parks from backend...');
-      const response = await fetch(`${API_BASE_URL}/dog-parks`);
+      const response = await fetch(getApiUrl('/api/dog-parks'));
       const data = await response.json();
 
       if (!response.ok) {
@@ -57,7 +79,7 @@ class DogParkService {
   static async addPark(parkData) {
     try {
       console.log('🏞️ Adding new dog park via backend...');
-      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/dog-parks`, {
+      const response = await makeAuthenticatedRequest('/api/dog-parks', {
         method: 'POST',
         body: JSON.stringify(parkData),
       });
@@ -79,7 +101,7 @@ class DogParkService {
   static async updatePark(parkId, parkData) {
     try {
       console.log('🏞️ Updating dog park via backend...');
-      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/dog-parks/${parkId}`, {
+      const response = await makeAuthenticatedRequest(`/api/dog-parks/${parkId}`, {
         method: 'PUT',
         body: JSON.stringify(parkData),
       });
@@ -101,7 +123,7 @@ class DogParkService {
   static async deletePark(parkId) {
     try {
       console.log('🏞️ Deleting dog park via backend...');
-      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/dog-parks/${parkId}`, {
+      const response = await makeAuthenticatedRequest(`/api/dog-parks/${parkId}`, {
         method: 'DELETE',
       });
 
@@ -123,7 +145,7 @@ class DogParkService {
     try {
       console.log('🏞️ Checking in dogs to park via backend...');
       
-      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/dog-parks/${parkId}/checkin`, {
+      const response = await makeAuthenticatedRequest(`/api/dog-parks/${parkId}/checkin`, {
         method: 'POST',
         body: JSON.stringify({ dogIds }),
       });
@@ -167,7 +189,7 @@ class DogParkService {
     try {
       console.log('🚪 Checking out dogs from park via backend...');
       
-      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/dog-parks/${parkId}/checkout`, {
+      const response = await makeAuthenticatedRequest(`/api/dog-parks/${parkId}/checkout`, {
         method: 'POST',
         body: JSON.stringify({ dogIds }),
       });
@@ -211,7 +233,7 @@ class DogParkService {
     try {
       console.log('🐕 Getting dogs checked into park via backend...');
       
-      const response = await makeAuthenticatedRequest(`${API_BASE_URL}/dog-parks/${parkId}/dogs`);
+      const response = await makeAuthenticatedRequest(`/api/dog-parks/${parkId}/dogs`);
       
       // Check if response is ok before trying to parse JSON
       if (!response.ok) {

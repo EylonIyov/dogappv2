@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DogService from '../services/DogService';
 import CustomAlert from '../components/CustomAlert';
 import { useAlerts } from '../components/useCustomAlert';
+import { getApiUrl } from '../config';
 
 export default function AddDogScreen({ navigation }) {
   const [dogData, setDogData] = useState({
@@ -98,7 +99,7 @@ export default function AddDogScreen({ navigation }) {
         return;
       }
 
-      const response = await fetch('http://ec2-16-171-173-92.eu-north-1.compute.amazonaws.com:3000/api/dog-breeds');
+      const response = await fetch(getApiUrl('/api/dog-breeds'));
       const data = await response.json();
       
       if (data.success) {
