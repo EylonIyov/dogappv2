@@ -115,7 +115,7 @@ const CustomAlert = ({
           
           <Text style={styles.message}>{message}</Text>
           
-          <View style={styles.buttonContainer}>
+          <View style={[styles.buttonContainer, !showCancel && styles.singleButtonContainer]}>
             {showCancel && (
               <TouchableOpacity
                 style={[styles.button, styles.cancelButton]}
@@ -126,7 +126,7 @@ const CustomAlert = ({
             )}
             
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: getColorForType() }]}
+              style={[styles.button, { backgroundColor: getColorForType() }, !showCancel && styles.singleButton]}
               onPress={handleConfirm}
             >
               <Text style={styles.buttonText}>{confirmText}</Text>
@@ -193,11 +193,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
   },
+  singleButtonContainer: {
+    justifyContent: 'center',
+  },
   button: {
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
     minWidth: 100,
+  },
+  singleButton: {
+    alignSelf: 'center',
   },
   buttonText: {
     color: '#FFFFFF',
