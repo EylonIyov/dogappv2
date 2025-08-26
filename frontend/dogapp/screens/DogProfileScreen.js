@@ -130,6 +130,13 @@ export default function DogProfileScreen({ route, navigation }) {
         {/* Action Buttons */}
         <View style={styles.actionSection}>
           <TouchableOpacity
+            style={styles.friendsButton}
+            onPress={() => navigation.navigate('DogFriends', { dog })}
+          >
+            <Text style={styles.friendsButtonText}>👥 View Friends</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.editButton}
             onPress={() => navigation.navigate('EditDog', { dog })}
           >
@@ -295,6 +302,25 @@ const styles = StyleSheet.create({
   actionSection: {
     margin: 20,
     gap: 15,
+  },
+  friendsButton: {
+    backgroundColor: '#6C63FF',
+    borderRadius: 12,
+    padding: 18,
+    alignItems: 'center',
+    shadowColor: '#6C63FF',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  friendsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   editButton: {
     backgroundColor: '#4A90E2',

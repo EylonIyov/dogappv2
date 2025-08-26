@@ -19,7 +19,7 @@ const io = new Server(server, {
   }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 // Environment check
 const isProduction = process.env.NODE_ENV === 'production';
@@ -147,7 +147,8 @@ const broadcastParkUpdate = async (parkId) => {
           emoji: dogData.emoji,
           owner_id: dogData.owner_id,
           energy_level: dogData.energy_level,
-          photo_url: dogData.photo_url
+          photo_url: dogData.photo_url,
+          friends: dogData.friends || [] // Include friends array
         });
       }
     });
@@ -224,7 +225,8 @@ const broadcastParkUpdateWebSocket = async (parkId) => {
           emoji: dogData.emoji,
           owner_id: dogData.owner_id,
           energy_level: dogData.energy_level,
-          photo_url: dogData.photo_url
+          photo_url: dogData.photo_url,
+          friends: dogData.friends || [] // Include friends array
         });
       }
     });
@@ -845,7 +847,8 @@ app.get('/api/dog-parks/:parkId/dogs', authenticateToken, async (req, res) => {
           emoji: dogData.emoji,
           owner_id: dogData.owner_id,
           energy_level: dogData.energy_level,
-          photo_url: dogData.photo_url
+          photo_url: dogData.photo_url,
+          friends: dogData.friends || [] // Include friends array
         });
       } else {
         console.log(`Dog with ID ${checkedInDogIds[index]} not found in database`);
@@ -1093,6 +1096,75 @@ app.post('/api/dogs/:dogId/photo', authenticateToken, upload.single('photo'), as
 
 // FRIEND REQUEST MANAGEMENT ROUTES
 
+// Get friends list for a specific dog
+app.get('/api/dogs/:dogId/friends', authenticateToken, async (req, res) => {
+  try {
+    const { dogId } = req.params;
+
+    console.log(`👥 Getting friends for dog: ${dogId}`);
+
+    // Get the dog document and verify ownership
+    const dogDoc = await dogsCollection.doc(dogId).get();
+    
+    if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Dog not found or not authorized' 
+      });
+    }
+
+    const dogData = dogDoc.data();
+    const friendIds = dogData.friends || [];
+
+    if (friendIds.length === 0) {
+      return res.json({
+        success: true,
+        friends: [],
+        friendsCount: 0
+      });
+    }
+
+    // Fetch friend dog documents
+    const friendPromises = friendIds.map(friendId => dogsCollection.doc(friendId).get());
+    const friendDocs = await Promise.all(friendPromises);
+    
+    const friends = [];
+    friendDocs.forEach((friendDoc, index) => {
+      if (friendDoc.exists) {
+        const friendData = friendDoc.data();
+        friends.push({
+          id: friendDoc.id,
+          name: friendData.name,
+          breed: friendData.breed,
+          age: friendData.age,
+          emoji: friendData.emoji,
+          photo_url: friendData.photo_url,
+          energy_level: friendData.energy_level,
+          play_style: friendData.play_style || [],
+          owner_id: friendData.owner_id
+        });
+      } else {
+        console.log(`Friend dog with ID ${friendIds[index]} not found in database`);
+      }
+    });
+
+    console.log(`✅ Found ${friends.length} friends for dog ${dogId}`);
+
+    res.json({
+      success: true,
+      friends,
+      friendsCount: friends.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting dog friends:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
 // Send a friend request (replaces direct friend adding)
 app.post('/api/dogs/:dogId/friends/:friendDogId', authenticateToken, async (req, res) => {
   try {
@@ -1236,6 +1308,88 @@ app.post('/api/dogs/:dogId/friends/:friendDogId', authenticateToken, async (req,
 
   } catch (error) {
     console.error('❌ Error sending friend request:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
+// Remove a friend from a dog's friends list
+app.delete('/api/dogs/:dogId/friends/:friendDogId', authenticateToken, async (req, res) => {
+  try {
+    const { dogId, friendDogId } = req.params;
+
+    console.log(`💔 Removing friend: ${dogId} unfriending ${friendDogId}`);
+
+    // Validation
+    if (dogId === friendDogId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid operation' 
+      });
+    }
+
+    // Get both dog documents
+    const [myDogDoc, friendDogDoc] = await Promise.all([
+      dogsCollection.doc(dogId).get(),
+      dogsCollection.doc(friendDogId).get()
+    ]);
+
+    // Verify my dog exists and belongs to the authenticated user
+    if (!myDogDoc.exists || myDogDoc.data().owner_id !== req.user.userId) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Your dog not found or not authorized' 
+      });
+    }
+
+    // Verify friend dog exists
+    if (!friendDogDoc.exists) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Friend dog not found' 
+      });
+    }
+
+    const myDogData = myDogDoc.data();
+    const friendDogData = friendDogDoc.data();
+
+    // Check if they are actually friends
+    const myDogFriends = myDogData.friends || [];
+    const friendDogFriends = friendDogData.friends || [];
+
+    if (!myDogFriends.includes(friendDogId)) {
+      return res.status(400).json({ 
+        success: false,
+        error: `${myDogData.name} and ${friendDogData.name} are not friends` 
+      });
+    }
+
+    // Remove each dog from the other's friends list
+    const updatedMyDogFriends = myDogFriends.filter(id => id !== friendDogId);
+    const updatedFriendDogFriends = friendDogFriends.filter(id => id !== dogId);
+
+    await Promise.all([
+      dogsCollection.doc(dogId).update({
+        friends: updatedMyDogFriends,
+        updated_at: serverTimestamp()
+      }),
+      dogsCollection.doc(friendDogId).update({
+        friends: updatedFriendDogFriends,
+        updated_at: serverTimestamp()
+      })
+    ]);
+
+    console.log(`✅ Friendship removed: ${myDogData.name} ↔ ${friendDogData.name} are no longer friends`);
+
+    res.json({
+      success: true,
+      message: `${myDogData.name} and ${friendDogData.name} are no longer friends`
+    });
+
+  } catch (error) {
+    console.error('❌ Error removing friend:', error);
     res.status(500).json({ 
       success: false,
       error: 'Internal server error' 
@@ -1694,6 +1848,8 @@ server.listen(PORT, HOST, () => {
   console.log(`  DELETE http://localhost:${PORT}/api/dogs/:dogId`);
   console.log(`  POST   http://localhost:${PORT}/api/dogs/:dogId/photo`);
   console.log(`  POST   http://localhost:${PORT}/api/dogs/:dogId/friends/:friendDogId`);
+  console.log(`  DELETE http://localhost:${PORT}/api/dogs/:dogId/friends/:friendDogId`);
+  console.log(`  GET    http://localhost:${PORT}/api/dogs/:dogId/friends`);
   console.log(`  POST   http://localhost:${PORT}/api/friend-requests/:requestId/accept`);
   console.log(`  POST   http://localhost:${PORT}/api/friend-requests/:requestId/decline`);
   console.log(`  GET    http://localhost:${PORT}/api/friend-requests/pending`);

@@ -1,13 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getApiUrl } from '../config';
 
 const AuthContext = createContext({});
 
 export const useAuth = () => {
   return useContext(AuthContext);
 };
-
-const API_BASE_URL = 'http://ec2-16-171-173-92.eu-north-1.compute.amazonaws.com:3000/api';
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
@@ -29,7 +28,7 @@ export const AuthProvider = ({ children }) => {
 
         try {
           // Verify token with backend
-          const response = await fetch(`${API_BASE_URL}/auth/me`, {
+          const response = await fetch(getApiUrl('/api/auth/me'), {
             headers: {
               'Authorization': `Bearer ${storedToken}`,
               'Content-Type': 'application/json',
@@ -81,7 +80,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      console.log('🔐 Attempting login with URL:', getApiUrl('/api/auth/login'));
+      
+      const response = await fetch(getApiUrl('/api/auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -89,7 +90,22 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
+      console.log('🔐 Login response status:', response.status);
+      console.log('🔐 Login response headers:', response.headers);
+      
+      // Get response text first to debug what we're receiving
+      const responseText = await response.text();
+      console.log('🔐 Raw response text:', responseText.substring(0, 200) + '...');
+
+      // Try to parse as JSON
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('🔐 JSON parse error:', parseError);
+        console.error('🔐 Response that failed to parse:', responseText);
+        return { success: false, error: 'Server returned invalid response. Please try again.' };
+      }
 
       if (response.ok) {
         // Store token and user data
@@ -108,7 +124,7 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (email, password, fullName, dateOfBirth, gender, profileImageUrl, preferences) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      const response = await fetch(getApiUrl('/api/auth/register'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -145,7 +161,7 @@ export const AuthProvider = ({ children }) => {
     try {
       if (token) {
         // Optional: Call backend logout endpoint
-        await fetch(`${API_BASE_URL}/auth/logout`, {
+        await fetch(getApiUrl('/api/auth/logout'), {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

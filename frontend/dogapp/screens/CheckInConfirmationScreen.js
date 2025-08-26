@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import io from 'socket.io-client';
 import CustomAlert, { DogImage } from '../components/CustomAlert';
 import { useAlerts } from '../components/useCustomAlert';
+import config from '../config';
 
 export default function CheckInConfirmationScreen({ route, navigation }) {
   const { park, checkedInDogs } = route.params;
@@ -25,7 +26,7 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
   const [otherDogs, setOtherDogs] = useState([]);
   const [loadingOtherDogs, setLoadingOtherDogs] = useState(true);
   const [socket, setSocket] = useState(null);
-  const [friendRequests, setFriendRequests] = useState({}); // Track friend request states
+  const [friendRequests, setFriendRequests] = useState({}); // Track friend request states: { "dogId-friendDogId": "pending" | "sent" | false }
   const { alertState, hideAlert, showError, showSuccess, showInfo } = useAlerts();
   const [friendSelectModalVisible, setFriendSelectModalVisible] = useState(false);
   const [selectedFriendDog, setSelectedFriendDog] = useState(null);
@@ -59,7 +60,7 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
       await loadOtherDogs();
       
       // Create WebSocket connection
-      const newSocket = io('http://ec2-16-171-173-92.eu-north-1.compute.amazonaws.com:3000');
+      const newSocket = io(config.api.baseUrl);
       
       newSocket.on('connect', () => {
         console.log('🟢 WebSocket connected:', newSocket.id);
@@ -182,7 +183,8 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
   // Handle adding a friend
   const handleAddFriend = async (myDogId, friendDogId, friendDogName) => {
     try {
-      setFriendRequests(prev => ({ ...prev, [`${myDogId}-${friendDogId}`]: true }));
+      // Set to pending state (processing)
+      setFriendRequests(prev => ({ ...prev, [`${myDogId}-${friendDogId}`]: 'pending' }));
       
       console.log('🤝 Attempting to send friend request:', myDogId, 'wants to befriend', friendDogId);
       
@@ -191,14 +193,21 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
       if (result.success) {
         const successMessage = result.message || `Friend request sent to ${friendDogName}'s owner! 🐕💌`;
         showSuccess(successMessage, 'Friend Request Sent! 🐕💌');
+        
+        // Set to sent state (permanently disabled with different text)
+        setFriendRequests(prev => ({ ...prev, [`${myDogId}-${friendDogId}`]: 'sent' }));
       } else {
         const errorMessage = result.error || 'Failed to send friend request. Please try again.';
         showError(errorMessage);
+        
+        // Reset to allow retry
+        setFriendRequests(prev => ({ ...prev, [`${myDogId}-${friendDogId}`]: false }));
       }
     } catch (error) {
       console.error('Error sending friend request:', error);
       showError('Failed to send friend request. Please try again.');
-    } finally {
+      
+      // Reset to allow retry
       setFriendRequests(prev => ({ ...prev, [`${myDogId}-${friendDogId}`]: false }));
     }
   };
@@ -214,6 +223,18 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
     // If multiple dogs, show selection modal
     setSelectedFriendDog(friendDog);
     setFriendSelectModalVisible(true);
+  };
+
+  // Helper function to check if two dogs are already friends
+  const areDogsAlreadyFriends = (myDogId, otherDogId, otherDog) => {
+    // Check if otherDog's friends array includes any of my dog IDs
+    const otherDogFriends = otherDog.friends || [];
+    return otherDogFriends.includes(myDogId);
+  };
+
+  // Helper function to check if any of my dogs are friends with the other dog
+  const isAnyOfMyDogsFriendsWith = (otherDog) => {
+    return checkedInDogs.some(myDog => areDogsAlreadyFriends(myDog.id, otherDog.id, otherDog));
   };
 
   // Prevent back navigation on this screen (mobile only)
@@ -260,6 +281,23 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
     } else {
       return 'Unknown';
     }
+  };
+
+  // Helper function to get button text based on request state
+  const getFriendButtonText = (requestState) => {
+    switch (requestState) {
+      case 'pending':
+        return 'Sending...';
+      case 'sent':
+        return 'Request Sent';
+      default:
+        return 'Add Friend';
+    }
+  };
+
+  // Helper function to check if button should be disabled
+  const isFriendButtonDisabled = (requestState) => {
+    return requestState === 'pending' || requestState === 'sent';
   };
 
   return (
@@ -321,27 +359,34 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
                     
                     {/* Dog Info in the middle */}
                     <View style={styles.otherDogInfo}>
-                      <Text style={styles.otherDogName} numberOfLines={1} ellipsizeMode="tail">
-                        {dog.name || 'Unknown Dog'}
-                      </Text>
+                      <View style={styles.dogNameContainer}>
+                        <Text style={styles.otherDogName} numberOfLines={1} ellipsizeMode="tail">
+                          {dog.name || 'Unknown Dog'}
+                        </Text>
+                        {isAnyOfMyDogsFriendsWith(dog) && (
+                          <Text style={styles.friendStatus}>Friend</Text>
+                        )}
+                      </View>
                       <Text style={styles.otherDogEnergyLevel} numberOfLines={1} ellipsizeMode="tail">
                         Energy: {getSimpleEnergyLevel(dog.energy_level)}
                       </Text>
                     </View>
 
-                    {/* Add Friend Button on the right */}
-                    <TouchableOpacity
-                      style={[
-                        styles.addFriendButton,
-                        friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`] && styles.buttonDisabled
-                      ]}
-                      onPress={() => showFriendRequestOptions(dog)}
-                      disabled={friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`]}
-                    >
-                      <Text style={styles.addFriendButtonText}>
-                        {friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`] ? 'Adding...' : 'Add Friend'}
-                      </Text>
-                    </TouchableOpacity>
+                    {/* Add Friend Button on the right - only show if not already friends */}
+                    {!isAnyOfMyDogsFriendsWith(dog) && (
+                      <TouchableOpacity
+                        style={[
+                          styles.addFriendButton,
+                          isFriendButtonDisabled(friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`]) && styles.buttonDisabled
+                        ]}
+                        onPress={() => showFriendRequestOptions(dog)}
+                        disabled={isFriendButtonDisabled(friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`])}
+                      >
+                        <Text style={styles.addFriendButtonText}>
+                          {getFriendButtonText(friendRequests[`${checkedInDogs[0]?.id}-${dog.id}`])}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 ))}
               </View>
@@ -647,12 +692,27 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  dogNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   otherDogName: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
     lineHeight: 18,
+    marginRight: 8,
+  },
+  friendStatus: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    backgroundColor: '#E8F5E8',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
   otherDogEnergyLevel: {
     fontSize: 14,

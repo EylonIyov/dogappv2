@@ -172,7 +172,7 @@ export default function NotificationsScreen({ navigation }) {
         <TouchableOpacity
           style={[styles.declineButton, processingRequest[request.id] && styles.buttonDisabled]}
           onPress={() => handleDeclineRequest(request.id, request.from_dog.name)}
-          disabled={processingRequest[request.id]}
+          disabled={!!processingRequest[request.id]}
         >
           <Text style={styles.declineButtonText}>
             {processingRequest[request.id] === 'declining' ? 'Declining...' : 'Decline'}
@@ -182,7 +182,7 @@ export default function NotificationsScreen({ navigation }) {
         <TouchableOpacity
           style={[styles.acceptButton, processingRequest[request.id] && styles.buttonDisabled]}
           onPress={() => handleAcceptRequest(request.id, request.from_dog.name, request.to_dog.name)}
-          disabled={processingRequest[request.id]}
+          disabled={!!processingRequest[request.id]}
         >
           <Text style={styles.acceptButtonText}>
             {processingRequest[request.id] === 'accepting' ? 'Accepting...' : 'Accept'}

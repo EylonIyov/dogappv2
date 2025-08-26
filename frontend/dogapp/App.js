@@ -14,6 +14,7 @@ import EditDogScreen from './screens/EditDogScreen';
 import DogParksScreen from './screens/DogParksScreen';
 import CheckInConfirmationScreen from './screens/CheckInConfirmationScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
+import DogFriendsScreen from './screens/DogFriendsScreen';
 
 const Stack = createStackNavigator();
 
@@ -103,6 +104,13 @@ function AppNavigator() {
               component={NotificationsScreen} 
               options={{ 
                 title: '🔔 Notifications'
+              }}
+            />
+            <Stack.Screen 
+              name="DogFriends" 
+              component={DogFriendsScreen} 
+              options={{ 
+                title: '👥 Dog Friends'
               }}
             />
           </>
