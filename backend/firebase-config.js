@@ -53,8 +53,8 @@ try {
         serviceAccount = require(process.env.GOOGLE_APPLICATION_CREDENTIALS || './serviceAccountKey.json');
         console.log('✅ Service account key file loaded successfully');
       } catch (keyError) {
-        console.error('❌ Error loading service account key file:', keyError.message);
-        console.error('💡 Make sure either:');
+        console.error(' Error loading service account key file:', keyError.message);
+        console.error(' Make sure either:');
         console.error('   1. Set Firebase environment variables in .env file, OR');
         console.error('   2. Place serviceAccountKey.json in the backend directory');
         throw new Error('Firebase credentials not found');
@@ -66,28 +66,28 @@ try {
       projectId: serviceAccount.project_id,
     });
     
-    console.log('✅ Firebase Admin SDK initialized successfully');
+    console.log(' Firebase Admin SDK initialized successfully');
   }
   
   // Get Firestore database instance
   db = admin.firestore();
-  console.log('✅ Firestore database connection established');
+  console.log(' Firestore database connection established');
   
 } catch (error) {
-  console.error('❌ Error initializing Firebase Admin SDK:', error.message);
+  console.error(' Error initializing Firebase Admin SDK:', error.message);
   
   // More specific error messages
   if (error.message.includes('private key')) {
-    console.error('🔑 The private key appears to be invalid.');
-    console.error('📝 Please check your Firebase configuration.');
+    console.error(' The private key appears to be invalid.');
+    console.error(' Please check your Firebase configuration.');
   }
   
   if (error.message.includes('project_id')) {
-    console.error('🏷️ Project ID mismatch. Please verify your Firebase project configuration.');
+    console.error(' Project ID mismatch. Please verify your Firebase project configuration.');
   }
   
   if (error.message.includes('Missing required Firebase')) {
-    console.error('🔧 Please run the setup script to configure Firebase environment variables.');
+    console.error(' Please run the setup script to configure Firebase environment variables.');
   }
   
   process.exit(1);
