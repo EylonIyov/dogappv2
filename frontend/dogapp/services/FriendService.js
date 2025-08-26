@@ -249,14 +249,22 @@ class FriendService {
   // Remove a friend from a dog
   async removeFriend(dogId, friendDogId) {
     try {
-      console.log('💔 Removing friend via API:', dogId, 'unfriending', friendDogId);
+      console.log('💔 [FriendService] Starting removeFriend...');
+      console.log('💔 [FriendService] Dog ID:', dogId);
+      console.log('💔 [FriendService] Friend ID:', friendDogId);
       
       const token = await this.getAuthToken();
       if (!token) {
+        console.error('💔 [FriendService] No auth token found');
         throw new Error('No auth token found');
       }
+      console.log('💔 [FriendService] Auth token found:', token ? 'YES' : 'NO');
 
-      const response = await this.makeApiRequest(`/api/dogs/${dogId}/friends/${friendDogId}`, {
+      const endpoint = `/api/dogs/${dogId}/friends/${friendDogId}`;
+      console.log('💔 [FriendService] Calling endpoint:', endpoint);
+      console.log('💔 [FriendService] Method: DELETE');
+
+      const response = await this.makeApiRequest(endpoint, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -264,17 +272,23 @@ class FriendService {
         },
       });
 
+      console.log('💔 [FriendService] Response status:', response.status);
+      console.log('💔 [FriendService] Response ok:', response.ok);
+
       const data = await response.json();
+      console.log('💔 [FriendService] Response data:', data);
 
       if (response.ok) {
-        console.log('✅ Friend removed successfully');
+        console.log('✅ [FriendService] Friend removed successfully');
         return { success: true, ...data };
       } else {
-        console.error('❌ Failed to remove friend:', data.error);
+        console.error('❌ [FriendService] Failed to remove friend:', data.error);
         return { success: false, error: data.error };
       }
     } catch (error) {
-      console.error('❌ Network error removing friend:', error);
+      console.error('❌ [FriendService] Network error removing friend:', error);
+      console.error('❌ [FriendService] Error details:', error.message);
+      console.error('❌ [FriendService] Error stack:', error.stack);
       return { success: false, error: 'Network error. Please try again.' };
     }
   }

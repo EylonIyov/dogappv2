@@ -89,9 +89,15 @@ const CustomAlert = ({
   if (!visible) return null;
 
   const handleConfirm = () => {
+    console.log('🔵 [CustomAlert] handleConfirm called');
+    console.log('🔵 [CustomAlert] onConfirm callback exists:', onConfirm ? 'YES' : 'NO');
+    
     if (onConfirm) {
+      console.log('🔵 [CustomAlert] About to call onConfirm callback...');
       onConfirm();
+      console.log('🔵 [CustomAlert] onConfirm callback completed');
     } else {
+      console.log('🔵 [CustomAlert] No onConfirm callback, calling onClose instead');
       onClose();
     }
   };

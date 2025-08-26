@@ -6,21 +6,35 @@ export const useCustomAlert = () => {
     title: '',
     message: '',
     type: 'info',
-    confirmText: 'OK'
+    confirmText: 'OK',
+    cancelText: 'Cancel',
+    showCancel: false,
+    onConfirm: null
   });
 
-  const showAlert = ({ title, message, type = 'info', confirmText = 'OK' }) => {
+  const showAlert = ({ 
+    title, 
+    message, 
+    type = 'info', 
+    confirmText = 'OK', 
+    cancelText = 'Cancel',
+    showCancel = false,
+    onConfirm = null
+  }) => {
     setAlertState({
       visible: true,
       title,
       message,
       type,
-      confirmText
+      confirmText,
+      cancelText,
+      showCancel,
+      onConfirm
     });
   };
 
   const hideAlert = () => {
-    setAlertState(prev => ({ ...prev, visible: false }));
+    setAlertState(prev => ({ ...prev, visible: false, onConfirm: null }));
   };
 
   return {
@@ -35,19 +49,35 @@ export const useAlerts = () => {
   const { alertState, showAlert, hideAlert } = useCustomAlert();
 
   const showSuccess = (message, title = 'Success') => {
+    console.log('🟢 [useAlerts] showSuccess called:', title, message);
     showAlert({ title, message, type: 'success' });
   };
 
   const showError = (message, title = 'Error') => {
+    console.log('🔴 [useAlerts] showError called:', title, message);
     showAlert({ title, message, type: 'error' });
   };
 
   const showWarning = (message, title = 'Warning') => {
+    console.log('🟡 [useAlerts] showWarning called:', title, message);
     showAlert({ title, message, type: 'warning' });
   };
 
-  const showInfo = (message, title = 'Info') => {
-    showAlert({ title, message, type: 'info' });
+  const showInfo = (message, title = 'Info', onConfirm = null, confirmText = 'OK', cancelText = 'Cancel') => {
+    console.log('🔵 [useAlerts] showInfo called:', title, message);
+    console.log('🔵 [useAlerts] onConfirm callback provided:', onConfirm ? 'YES' : 'NO');
+    console.log('🔵 [useAlerts] confirmText:', confirmText);
+    console.log('🔵 [useAlerts] cancelText:', cancelText);
+    
+    showAlert({ 
+      title, 
+      message, 
+      type: 'info',
+      confirmText,
+      cancelText,
+      showCancel: onConfirm ? true : false,
+      onConfirm
+    });
   };
 
   return {

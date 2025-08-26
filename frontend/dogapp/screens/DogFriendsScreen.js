@@ -59,28 +59,49 @@ export default function DogFriendsScreen({ route, navigation }) {
 
   const removeFriend = async (friendId, friendName) => {
     try {
-      console.log('💔 Removing friend:', dog.name, 'unfriending', friendName);
+      console.log('💔 Starting removeFriend process...');
+      console.log('💔 Dog ID:', dog.id);
+      console.log('💔 Friend ID:', friendId);
+      console.log('💔 Dog name:', dog.name);
+      console.log('💔 Friend name:', friendName);
       
       const result = await FriendService.removeFriend(dog.id, friendId);
       
+      console.log('💔 API Response:', result);
+      
       if (result.success) {
+        console.log('✅ Successfully removed friend from API');
         showSuccess(`${dog.name} and ${friendName} are no longer friends.`);
         // Remove the friend from the local state
-        setFriends(prev => prev.filter(friend => friend.id !== friendId));
+        setFriends(prev => {
+          const newFriends = prev.filter(friend => friend.id !== friendId);
+          console.log('💔 Updated friends list:', newFriends.length, 'friends remaining');
+          return newFriends;
+        });
       } else {
+        console.error('❌ API returned error:', result.error);
         showError(result.error || 'Failed to remove friend');
       }
     } catch (error) {
-      console.error('Error removing friend:', error);
+      console.error('💥 Exception in removeFriend:', error);
       showError('Failed to remove friend. Please try again.');
     }
   };
 
   const confirmRemoveFriend = (friend) => {
+    console.log('💔 [DogFriendsScreen] confirmRemoveFriend called with friend:', friend);
+    console.log('💔 [DogFriendsScreen] Friend ID:', friend.id);
+    console.log('💔 [DogFriendsScreen] Friend name:', friend.name);
+    console.log('💔 [DogFriendsScreen] Dog ID:', dog.id);
+    console.log('💔 [DogFriendsScreen] Dog name:', dog.name);
+    
     showInfo(
       `Are you sure you want to remove ${friend.name} from ${dog.name}'s friends list?`,
       'Remove Friend',
-      () => removeFriend(friend.id, friend.name),
+      () => {
+        console.log('💔 [DogFriendsScreen] User confirmed removal, calling removeFriend...');
+        removeFriend(friend.id, friend.name);
+      },
       'Remove',
       'Cancel'
     );
@@ -128,7 +149,11 @@ export default function DogFriendsScreen({ route, navigation }) {
 
         <TouchableOpacity
           style={styles.removeButton}
-          onPress={() => confirmRemoveFriend(friend)}
+          onPress={() => {
+            console.log('💔 [DogFriendsScreen] Remove button pressed for friend:', friend.name);
+            console.log('💔 [DogFriendsScreen] About to call confirmRemoveFriend...');
+            confirmRemoveFriend(friend);
+          }}
         >
           <Text style={styles.removeButtonText}>💔</Text>
         </TouchableOpacity>

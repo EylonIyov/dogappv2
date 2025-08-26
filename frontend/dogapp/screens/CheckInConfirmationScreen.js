@@ -367,8 +367,8 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
                           <Text style={styles.friendStatus}>Friend</Text>
                         )}
                       </View>
-                      <Text style={styles.otherDogEnergyLevel} numberOfLines={1} ellipsizeMode="tail">
-                        Energy: {getSimpleEnergyLevel(dog.energy_level)}
+                      <Text style={styles.otherDogBreed} numberOfLines={1} ellipsizeMode="tail">
+                        {dog.breed || 'Unknown Breed'}
                       </Text>
                     </View>
 
@@ -714,7 +714,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     overflow: 'hidden',
   },
-  otherDogEnergyLevel: {
+  otherDogBreed: {
     fontSize: 14,
     color: '#666',
     lineHeight: 16,
