@@ -4,7 +4,7 @@
 const config = {
   // Backend API Configuration
   api: {
-    baseUrl: 'http://ec2-16-171-173-92.eu-north-1.compute.amazonaws.com:8080',
+    baseUrl: process.env.REACT_APP_API_URL || 'http://ec2-16-171-173-92.eu-north-1.compute.amazonaws.com:8080',    
     timeout: 10000, // 10 seconds
     retries: 3,
   },
