@@ -16,9 +16,12 @@ sudo docker rmi dogapp-backend_dogapp-backend 2>/dev/null || true
 #build the new image
 sudo docker build -t dogapp-backend .
 
+
+#Start the container
 sudo docker run -d \
   --name dogapp-backend \
   -p 8080:8080 \
   --env-file .env.production \
   --restart unless-stopped \
   dogapp-backend
+

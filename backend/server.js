@@ -32,7 +32,7 @@ const parkConnections = new Map(); // parkId -> Set of socket IDs
 
 // Middleware
 app.use(cors({
-  origin: isProduction ? process.env.FRONTEND_URL : '*',
+  origin: ['https://dogappv-deploy.vercel.app/', 'http://localhost:3000', '*'],
   credentials: true
 }));
 app.use(express.json());
