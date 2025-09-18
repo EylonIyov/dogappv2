@@ -14,7 +14,6 @@ import FriendService from '../services/FriendService';
 import { useAuth } from '../contexts/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import io from 'socket.io-client';
 import CustomAlert, { DogImage } from '../components/CustomAlert';
 import { useAlerts } from '../components/useCustomAlert';
 import config from '../config';
@@ -25,8 +24,8 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const [otherDogs, setOtherDogs] = useState([]);
   const [loadingOtherDogs, setLoadingOtherDogs] = useState(true);
-  const [socket, setSocket] = useState(null);
-  const [friendRequests, setFriendRequests] = useState({}); // Track friend request states: { "dogId-friendDogId": "pending" | "sent" | false }
+  const [sseUnsubscribe, setSseUnsubscribe] = useState(null);
+  const [friendRequests, setFriendRequests] = useState({});
   const { alertState, hideAlert, showError, showSuccess, showInfo } = useAlerts();
   const [friendSelectModalVisible, setFriendSelectModalVisible] = useState(false);
   const [selectedFriendDog, setSelectedFriendDog] = useState(null);
@@ -41,12 +40,11 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
       gestureEnabled: false,
     });
 
-    // Cleanup WebSocket when component unmounts
+    // Cleanup SSE when component unmounts
     return () => {
-      if (socket) {
-        console.log('📡 Cleaning up WebSocket connection on unmount');
-        socket.emit('leavePark', park.id);
-        socket.disconnect();
+      if (sseUnsubscribe) {
+        console.log('📡 Cleaning up SSE connection on unmount');
+        sseUnsubscribe();
       }
     };
   }, [navigation]);
@@ -54,59 +52,60 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
   const setupLiveUpdates = async () => {
     try {
       setLoadingOtherDogs(true);
-      console.log('📡 Setting up live updates (WebSocket) for park:', park.id);
+      console.log('📡 Setting up SSE live updates for park:', park.id);
       
-      // Load initial data
-      await loadOtherDogs();
-      
-      // Create WebSocket connection
-      const newSocket = io(config.api.baseUrl);
-      
-      newSocket.on('connect', () => {
-        console.log('🟢 WebSocket connected:', newSocket.id);
-        // Join the specific park room
-        newSocket.emit('joinPark', park.id);
-      });
-
-      newSocket.on('parkUpdate', (data) => {
-        if (data.parkId === park.id) {
-          console.log('📡 Received real-time park update:', data);
+      // Subscribe to real-time updates using SSE - now properly awaiting the async function
+      const unsubscribe = await DogParkService.subscribeToCheckedInDogs(park.id, (result) => {
+        console.log('📡 SSE callback received:', result);
+        
+        if (result.success) {
+          console.log('📡 Received SSE park update:', result.dogs.length, 'total dogs');
           
           // Filter out current user's dogs
           const myDogIds = checkedInDogs.map(dog => dog.id);
-          const otherDogsInPark = data.dogs.filter(dog => 
+          const otherDogsInPark = result.dogs.filter(dog => 
             dog.owner_id !== currentUser?.id && !myDogIds.includes(dog.id)
           );
 
           console.log('📡 Updating other dogs list with', otherDogsInPark.length, 'dogs');
+          console.log('📡 Other dogs:', otherDogsInPark.map(d => d.name));
+          
           setOtherDogs(otherDogsInPark);
           setLoadingOtherDogs(false);
+        } else {
+          console.error('❌ SSE connection error:', result.error);
+          
+          // Handle different error types
+          if (result.error && result.error.includes('Authentication')) {
+            showError('Session expired. Please log in again.');
+            setLoadingOtherDogs(false);
+          } else if (result.error && result.error.includes('Connection')) {
+            console.log('🔄 SSE connection failed, falling back to manual loading...');
+            // Fallback to manual loading for connection issues
+            loadOtherDogs();
+          } else {
+            // Only fallback to manual loading for serious errors
+            console.log('🔄 Falling back to manual loading due to SSE error');
+            loadOtherDogs();
+          }
         }
       });
 
-      newSocket.on('disconnect', () => {
-        console.log('🔴 WebSocket disconnected');
-      });
-
-      newSocket.on('connect_error', (error) => {
-        console.error('📡 WebSocket connection error:', error);
-        // Fallback to manual loading if WebSocket fails
-        loadOtherDogs();
-      });
-
-      setSocket(newSocket);
-      console.log('📡 Live WebSocket setup complete');
+      setSseUnsubscribe(() => unsubscribe);
+      console.log('📡 Live SSE setup complete');
 
     } catch (error) {
       console.error('Error setting up live updates:', error);
+      // Only as last resort fallback
       loadOtherDogs();
     }
   };
 
+  // Keep loadOtherDogs as fallback only
   const loadOtherDogs = async () => {
     try {
       setLoadingOtherDogs(true);
-      console.log('🐕 Loading other dogs in park...');
+      console.log('🐕 Loading other dogs in park (fallback)...');
       
       const result = await DogParkService.getDogsInPark(park.id);
       
@@ -117,17 +116,7 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
           dog.owner_id !== currentUser?.id && !myDogIds.includes(dog.id)
         );
         
-        console.log('✅ Found', otherDogsInPark.length, 'other dogs in park');
-        
-        // Debug: Log photo URLs for each dog
-        otherDogsInPark.forEach((dog, index) => {
-          console.log(`🐕 Other Dog ${index + 1}: ${dog.name}`);
-          console.log(`   - Photo URL: ${dog.photo_url || 'No photo'}`);
-          console.log(`   - Photo URL type: ${typeof dog.photo_url}`);
-          console.log(`   - Photo URL length: ${dog.photo_url ? dog.photo_url.length : 0}`);
-          console.log(`   - Energy level: ${dog.energy_level || 'Unknown'}`);
-        });
-        
+        console.log('✅ Found', otherDogsInPark.length, 'other dogs in park (fallback)');
         setOtherDogs(otherDogsInPark);
       } else {
         console.error('❌ Failed to load other dogs:', result.error);

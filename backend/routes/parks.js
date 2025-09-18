@@ -347,7 +347,7 @@ router.get('/:parkId/dogs', authenticateToken, async (req, res) => {
 });
 
 // SSE endpoint for real-time park updates
-router.get('/:parkId/live', (req, res) => {
+router.get('/:parkId/live', async (req, res) => {
   const { parkId } = req.params;
   const { token } = req.query;
   
@@ -387,8 +387,54 @@ router.get('/:parkId/live', (req, res) => {
   // Send initial connection confirmation
   res.write(`data: ${JSON.stringify({ type: 'connected', parkId })}\n\n`);
 
-  // Send current dogs list immediately
-  broadcastParkUpdate(parkId);
+  // Send current dogs list immediately with proper error handling
+  try {
+    // Get current park data
+    const parkDoc = await dogParksCollection.doc(parkId).get();
+    if (parkDoc.exists) {
+      const parkData = parkDoc.data();
+      const checkedInDogIds = parkData.checkedInDogs || [];
+      
+      let checkedInDogs = [];
+      
+      if (checkedInDogIds.length > 0) {
+        // Fetch all the dog documents
+        const dogPromises = checkedInDogIds.map(dogId => dogsCollection.doc(dogId).get());
+        const dogDocs = await Promise.all(dogPromises);
+        
+        dogDocs.forEach((dogDoc, index) => {
+          if (dogDoc.exists) {
+            const dogData = dogDoc.data();
+            checkedInDogs.push({
+              id: dogDoc.id,
+              name: dogData.name,
+              breed: dogData.breed,
+              age: dogData.age,
+              emoji: dogData.emoji,
+              owner_id: dogData.owner_id,
+              energy_level: dogData.energy_level,
+              photo_url: dogData.photo_url,
+              friends: dogData.friends || []
+            });
+          }
+        });
+      }
+
+      // Send initial data
+      const initialData = JSON.stringify({
+        type: 'park_update',
+        parkId,
+        dogs: checkedInDogs
+      });
+      
+      console.log(`📡 Sending initial data to new SSE client for park ${parkId}: ${checkedInDogs.length} dogs`);
+      res.write(`data: ${initialData}\n\n`);
+    }
+  } catch (error) {
+    console.error('Error sending initial SSE data:', error);
+    // Send empty list as fallback
+    res.write(`data: ${JSON.stringify({ type: 'park_update', parkId, dogs: [] })}\n\n`);
+  }
 
   // Handle client disconnect
   req.on('close', () => {

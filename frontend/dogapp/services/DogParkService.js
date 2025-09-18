@@ -284,61 +284,62 @@ class DogParkService {
    * @param {function} callback - Callback function to handle updates
    * @returns {function} Unsubscribe function
    */
-  static subscribeToCheckedInDogs(parkId, callback) {
+  static async subscribeToCheckedInDogs(parkId, callback) {
     try {
       console.log(`🔔 Setting up SSE connection for park: ${parkId}`);
       
       // Get auth token for the SSE connection
-      this.getAuthToken().then(token => {
-        if (!token) {
-          callback({
-            success: false,
-            error: 'Authentication required'
-          });
-          return;
-        }
+      const token = await this.getAuthToken();
+      if (!token) {
+        callback({
+          success: false,
+          error: 'Authentication required'
+        });
+        return () => {};
+      }
 
-        // Create EventSource URL with auth token as query parameter
-        const sseUrl = getApiUrl(`/api/dog-parks/${parkId}/live?token=${encodeURIComponent(token)}`);
-        
-        // Create EventSource connection using React Native polyfill
-        const eventSource = new EventSourcePolyfill(sseUrl);
+      // Create EventSource URL with auth token as query parameter
+      const sseUrl = getApiUrl(`/api/dog-parks/${parkId}/live?token=${encodeURIComponent(token)}`);
+      console.log(`🔔 SSE URL: ${sseUrl.substring(0, 100)}...`);
+      
+      // Create EventSource connection using React Native polyfill
+      const eventSource = new EventSourcePolyfill(sseUrl);
 
-        eventSource.onopen = () => {
-          console.log(`🟢 SSE connection opened for park ${parkId}`);
-        };
+      eventSource.onopen = () => {
+        console.log(`🟢 SSE connection opened for park ${parkId}`);
+      };
 
-        eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
+      eventSource.onmessage = (event) => {
+        try {
+          console.log(`📨 SSE message received for park ${parkId}:`, event.data);
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'park_update' && data.parkId === parkId) {
+            console.log(`🔄 SSE park update for ${parkId}: ${data.dogs.length} dogs`);
             
-            if (data.type === 'park_update' && data.parkId === parkId) {
-              console.log(`🔄 SSE update received for park ${parkId}:`, data.dogs.length, 'dogs checked in');
-              
-              callback({
-                success: true,
-                dogs: data.dogs,
-                parkData: { checkedInDogs: data.dogs }
-              });
-            } else if (data.type === 'connected') {
-              console.log(`✅ SSE connected to park ${parkId}`);
-            }
-          } catch (error) {
-            console.error('Error parsing SSE message:', error);
+            callback({
+              success: true,
+              dogs: data.dogs,
+              parkData: { checkedInDogs: data.dogs }
+            });
+          } else if (data.type === 'connected') {
+            console.log(`✅ SSE connected to park ${parkId}`);
           }
-        };
+        } catch (error) {
+          console.error('Error parsing SSE message:', error);
+        }
+      };
 
-        eventSource.onerror = (error) => {
-          console.error(`❌ SSE connection error for park ${parkId}:`, error);
-          callback({
-            success: false,
-            error: 'Connection error'
-          });
-        };
+      eventSource.onerror = (error) => {
+        console.error(`❌ SSE connection error for park ${parkId}:`, error);
+        callback({
+          success: false,
+          error: 'Connection error'
+        });
+      };
 
-        // Store the EventSource for cleanup
-        this.activeEventSources.set(`park_${parkId}`, eventSource);
-      });
+      // Store the EventSource for cleanup
+      this.activeEventSources.set(`park_${parkId}`, eventSource);
 
       // Return unsubscribe function
       return () => {
