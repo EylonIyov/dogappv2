@@ -3,14 +3,14 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 // Your Firebase config object
-// Replace these values with your actual Firebase project configuration
 const firebaseConfig = {
-  apiKey: "your-api-key-here",
-  authDomain: "your-project-id.firebaseapp.com",
-  projectId: "your-project-id",
-  storageBucket: "your-project-id.appspot.com",
-  messagingSenderId: "your-sender-id",
-  appId: "your-app-id"
+  apiKey: "AIzaSyCbG5iuZ-eIQ9mA0rLQngr9ykzxjW0YN7g",
+  authDomain: "dog-app-39718.firebaseapp.com",
+  projectId: "dog-app-39718",
+  storageBucket: "dog-app-39718.firebasestorage.app",
+  messagingSenderId: "599801819669",
+  appId: "1:599801819669:web:090272a8756afd576a141c",
+  measurementId: "G-K3EMESTEHC"
 };
 
 // Initialize Firebase

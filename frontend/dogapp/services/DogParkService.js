@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiUrl, getApiConfig } from '../config';
-import { db } from '../firebase';
-import { collection, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { EventSourcePolyfill } from 'react-native-sse';
 
 // Helper function to get auth token
 const getAuthToken = async () => {
@@ -60,8 +59,8 @@ const makeAuthenticatedRequest = async (endpoint, options = {}) => {
 };
 
 class DogParkService {
-  // Store active listeners to clean them up later
-  static activeListeners = new Map();
+  // Store active EventSource connections to clean them up later
+  static activeEventSources = new Map();
 
   static async getParks() {
     try {
@@ -280,51 +279,74 @@ class DogParkService {
   }
 
   /**
-   * Subscribe to real-time updates of a specific dog park's checked-in dogs
+   * Subscribe to real-time updates of a specific dog park's checked-in dogs using Server-Sent Events
    * @param {string} parkId - The ID of the park to monitor
    * @param {function} callback - Callback function to handle updates
    * @returns {function} Unsubscribe function
    */
   static subscribeToCheckedInDogs(parkId, callback) {
     try {
-      console.log(`🔔 Subscribing to real-time updates for park: ${parkId}`);
+      console.log(`🔔 Setting up SSE connection for park: ${parkId}`);
       
-      const parkDocRef = doc(db, 'dogParks', parkId);
-      
-      const unsubscribe = onSnapshot(parkDocRef, (docSnapshot) => {
-        if (docSnapshot.exists()) {
-          const parkData = docSnapshot.data();
-          const checkedInDogs = parkData.checkedInDogs || [];
-          
-          console.log(`🔄 Real-time update for park ${parkId}:`, checkedInDogs.length, 'dogs checked in');
-          
-          // Call the callback with the updated dogs list
-          callback({
-            success: true,
-            dogs: checkedInDogs,
-            parkData: parkData
-          });
-        } else {
-          console.log(`❌ Park ${parkId} not found`);
+      // Get auth token for the SSE connection
+      this.getAuthToken().then(token => {
+        if (!token) {
           callback({
             success: false,
-            error: 'Park not found'
+            error: 'Authentication required'
           });
+          return;
         }
-      }, (error) => {
-        console.error(`❌ Error in real-time listener for park ${parkId}:`, error);
-        callback({
-          success: false,
-          error: error.message
-        });
+
+        // Create EventSource URL with auth token as query parameter
+        const sseUrl = getApiUrl(`/api/dog-parks/${parkId}/live?token=${encodeURIComponent(token)}`);
+        
+        // Create EventSource connection using React Native polyfill
+        const eventSource = new EventSourcePolyfill(sseUrl);
+
+        eventSource.onopen = () => {
+          console.log(`🟢 SSE connection opened for park ${parkId}`);
+        };
+
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'park_update' && data.parkId === parkId) {
+              console.log(`🔄 SSE update received for park ${parkId}:`, data.dogs.length, 'dogs checked in');
+              
+              callback({
+                success: true,
+                dogs: data.dogs,
+                parkData: { checkedInDogs: data.dogs }
+              });
+            } else if (data.type === 'connected') {
+              console.log(`✅ SSE connected to park ${parkId}`);
+            }
+          } catch (error) {
+            console.error('Error parsing SSE message:', error);
+          }
+        };
+
+        eventSource.onerror = (error) => {
+          console.error(`❌ SSE connection error for park ${parkId}:`, error);
+          callback({
+            success: false,
+            error: 'Connection error'
+          });
+        };
+
+        // Store the EventSource for cleanup
+        this.activeEventSources.set(`park_${parkId}`, eventSource);
       });
 
-      // Store the unsubscribe function
-      this.activeListeners.set(`park_${parkId}`, unsubscribe);
-      
-      return unsubscribe;
+      // Return unsubscribe function
+      return () => {
+        this.unsubscribeFromListener(`park_${parkId}`);
+      };
+
     } catch (error) {
-      console.error('❌ Error setting up real-time listener:', error);
+      console.error('❌ Error setting up SSE connection:', error);
       callback({
         success: false,
         error: error.message
@@ -334,77 +356,66 @@ class DogParkService {
   }
 
   /**
-   * Subscribe to real-time updates of all dog parks
+   * Subscribe to real-time updates of all dog parks using the regular API (fallback)
    * @param {function} callback - Callback function to handle updates
    * @returns {function} Unsubscribe function
    */
   static subscribeToAllParks(callback) {
-    try {
-      console.log('🔔 Subscribing to real-time updates for all parks');
-      
-      const parksCollectionRef = collection(db, 'dogParks');
-      const parksQuery = query(parksCollectionRef, orderBy('name'));
-      
-      const unsubscribe = onSnapshot(parksQuery, (querySnapshot) => {
-        const parks = [];
-        querySnapshot.forEach((doc) => {
-          parks.push({
-            id: doc.id,
-            ...doc.data()
-          });
-        });
-        
-        console.log('🔄 Real-time update for all parks:', parks.length, 'parks found');
-        
-        callback({
-          success: true,
-          parks: parks
-        });
-      }, (error) => {
-        console.error('❌ Error in real-time listener for all parks:', error);
-        callback({
-          success: false,
-          error: error.message
-        });
-      });
-
-      // Store the unsubscribe function
-      this.activeListeners.set('all_parks', unsubscribe);
-      
-      return unsubscribe;
-    } catch (error) {
-      console.error('❌ Error setting up real-time listener for all parks:', error);
+    // For all parks, we'll use the regular API call since SSE is park-specific
+    // This could be enhanced later with a general SSE endpoint for all parks
+    this.getParks().then(result => {
+      callback(result);
+    }).catch(error => {
       callback({
         success: false,
         error: error.message
       });
-      return () => {}; // Return empty unsubscribe function
-    }
+    });
+
+    // Return empty unsubscribe function since this is a one-time call
+    return () => {};
   }
 
   /**
-   * Unsubscribe from a specific listener
+   * Unsubscribe from a specific SSE listener
    * @param {string} listenerId - The ID of the listener to unsubscribe
    */
   static unsubscribeFromListener(listenerId) {
-    const unsubscribe = this.activeListeners.get(listenerId);
-    if (unsubscribe) {
-      unsubscribe();
-      this.activeListeners.delete(listenerId);
-      console.log(`🔕 Unsubscribed from listener: ${listenerId}`);
+    const eventSource = this.activeEventSources.get(listenerId);
+    if (eventSource) {
+      eventSource.close();
+      this.activeEventSources.delete(listenerId);
+      console.log(`🔕 Unsubscribed from SSE listener: ${listenerId}`);
     }
   }
 
   /**
-   * Clean up all active listeners
+   * Clean up all active SSE connections
    */
   static cleanupAllListeners() {
-    console.log(`🧹 Cleaning up ${this.activeListeners.size} active listeners`);
-    this.activeListeners.forEach((unsubscribe, listenerId) => {
-      unsubscribe();
-      console.log(`🔕 Cleaned up listener: ${listenerId}`);
+    console.log(`🧹 Cleaning up ${this.activeEventSources.size} active SSE connections`);
+    this.activeEventSources.forEach((eventSource, listenerId) => {
+      eventSource.close();
+      console.log(`🔕 Cleaned up SSE connection: ${listenerId}`);
     });
-    this.activeListeners.clear();
+    this.activeEventSources.clear();
+  }
+
+  // Helper function to get auth token (moved to static for SSE usage)
+  static async getAuthToken() {
+    try {
+      console.log('🔑 Attempting to retrieve auth token from AsyncStorage...');
+      const token = await AsyncStorage.getItem('authToken');
+      if (token) {
+        console.log('✅ Auth token found:', token.substring(0, 20) + '...');
+      } else {
+        console.log('❌ No auth token found in AsyncStorage');
+      }
+      return token;
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return null;
+    }
   }
 }
 
