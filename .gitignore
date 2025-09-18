@@ -96,3 +96,6 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+
+.vercel

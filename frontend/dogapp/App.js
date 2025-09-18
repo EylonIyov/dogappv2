@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Platform, View, Text, ActivityIndicator } from 'react-native';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import DevPanel from './components/DevPanel';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import DashboardScreen from './screens/DashboardScreen';
@@ -162,6 +163,7 @@ export default function App() {
     <AuthProvider>
       <View style={{ flex: 1 }}>
         <AppNavigator />
+        <DevPanel />
       </View>
     </AuthProvider>
   );
