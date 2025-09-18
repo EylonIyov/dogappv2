@@ -40,10 +40,10 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
       gestureEnabled: false,
     });
 
-    // Cleanup SSE when component unmounts
+    // Cleanup Firestore listener when component unmounts
     return () => {
       if (sseUnsubscribe) {
-        console.log('📡 Cleaning up SSE connection on unmount');
+        console.log('📡 Cleaning up Firestore listener on unmount');
         sseUnsubscribe();
       }
     };
@@ -52,14 +52,14 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
   const setupLiveUpdates = async () => {
     try {
       setLoadingOtherDogs(true);
-      console.log('📡 Setting up SSE live updates for park:', park.id);
+      console.log('📡 Setting up Firestore listener for park:', park.id);
       
-      // Subscribe to real-time updates using SSE - now properly awaiting the async function
-      const unsubscribe = await DogParkService.subscribeToCheckedInDogs(park.id, (result) => {
-        console.log('📡 SSE callback received:', result);
+      // Subscribe to real-time updates using Firestore listeners
+      const unsubscribe = DogParkService.subscribeToCheckedInDogs(park.id, (result) => {
+        console.log('📡 Firestore callback received:', result);
         
         if (result.success) {
-          console.log('📡 Received SSE park update:', result.dogs.length, 'total dogs');
+          console.log('📡 Received Firestore park update:', result.dogs.length, 'total dogs');
           
           // Filter out current user's dogs
           const myDogIds = checkedInDogs.map(dog => dog.id);
@@ -73,26 +73,26 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
           setOtherDogs(otherDogsInPark);
           setLoadingOtherDogs(false);
         } else {
-          console.error('❌ SSE connection error:', result.error);
+          console.error('❌ Firestore listener error:', result.error);
           
           // Handle different error types
           if (result.error && result.error.includes('Authentication')) {
             showError('Session expired. Please log in again.');
             setLoadingOtherDogs(false);
           } else if (result.error && result.error.includes('Connection')) {
-            console.log('🔄 SSE connection failed, falling back to manual loading...');
+            console.log('🔄 Firestore connection failed, falling back to manual loading...');
             // Fallback to manual loading for connection issues
             loadOtherDogs();
           } else {
             // Only fallback to manual loading for serious errors
-            console.log('🔄 Falling back to manual loading due to SSE error');
+            console.log('🔄 Falling back to manual loading due to Firestore error');
             loadOtherDogs();
           }
         }
       });
 
       setSseUnsubscribe(() => unsubscribe);
-      console.log('📡 Live SSE setup complete');
+      console.log('📡 Live Firestore setup complete');
 
     } catch (error) {
       console.error('Error setting up live updates:', error);

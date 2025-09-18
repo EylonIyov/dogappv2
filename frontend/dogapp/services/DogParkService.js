@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiUrl, getApiConfig } from '../config';
-import { EventSourcePolyfill } from 'react-native-sse';
+import { makeAuthenticatedRequest } from './api';
+import { db } from '../firebase';
+import { doc, onSnapshot, collection, getDocs } from 'firebase/firestore';
 
 // Helper function to get auth token
 const getAuthToken = async () => {
@@ -19,64 +21,24 @@ const getAuthToken = async () => {
   }
 };
 
-// Helper function to make authenticated requests with retry logic
-const makeAuthenticatedRequest = async (endpoint, options = {}) => {
-  const config = getApiConfig();
-  const url = getApiUrl(endpoint);
-  const token = await getAuthToken();
-  
-  console.log('🔑 Making authenticated request to:', url);
-  console.log('🔑 Token available:', !!token);
-  
-  let lastError;
-  
-  for (let attempt = 1; attempt <= config.retries; attempt++) {
-    try {
-      const response = await fetch(url, {
-        timeout: config.timeout,
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` }),
-          ...options.headers,
-        },
-      });
-      
-      return response;
-    } catch (error) {
-      lastError = error;
-      console.warn(`API request attempt ${attempt} failed:`, error);
-      
-      // Don't retry on the last attempt
-      if (attempt === config.retries) {
-        throw lastError;
-      }
-      
-      // Wait before retrying (exponential backoff)
-      await new Promise(resolve => setTimeout(resolve, attempt * 1000));
-    }
-  }
-};
+// Store active Firestore listeners to clean them up later
+const activeListeners = new Map();
 
 class DogParkService {
-  // Store active EventSource connections to clean them up later
-  static activeEventSources = new Map();
-
   static async getParks() {
     try {
-      console.log('🏞️ Fetching dog parks from backend...');
-      const response = await fetch(getApiUrl('/api/dog-parks'));
-      const data = await response.json();
-
+      console.log('🏞️ Fetching dog parks...');
+      const response = await makeAuthenticatedRequest('/api/dog-parks');
+      
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch parks');
+        throw new Error(`Failed to fetch parks: ${response.status}`);
       }
 
-      console.log('✅ Dog parks loaded successfully:', data.parks.length, 'parks found');
-      return { success: true, parks: data.parks };
+      const data = await response.json();
+      return data;
     } catch (error) {
-      console.error('❌ Error fetching dog parks:', error);
-      return { success: false, error: error.message };
+      console.error('❌ Error fetching parks:', error);
+      throw error;
     }
   }
 
@@ -279,67 +241,89 @@ class DogParkService {
   }
 
   /**
-   * Subscribe to real-time updates of a specific dog park's checked-in dogs using Server-Sent Events
+   * Subscribe to real-time updates of a specific dog park's checked-in dogs using Firestore listeners
    * @param {string} parkId - The ID of the park to monitor
    * @param {function} callback - Callback function to handle updates
    * @returns {function} Unsubscribe function
    */
-  static async subscribeToCheckedInDogs(parkId, callback) {
+  static subscribeToCheckedInDogs(parkId, callback) {
     try {
-      console.log(`🔔 Setting up SSE connection for park: ${parkId}`);
+      console.log(`🔔 Setting up Firestore listener for park: ${parkId}`);
       
-      // Get auth token for the SSE connection
-      const token = await this.getAuthToken();
-      if (!token) {
-        callback({
-          success: false,
-          error: 'Authentication required'
-        });
-        return () => {};
-      }
-
-      // Create EventSource URL with auth token as query parameter
-      const sseUrl = getApiUrl(`/api/dog-parks/${parkId}/live?token=${encodeURIComponent(token)}`);
-      console.log(`🔔 SSE URL: ${sseUrl.substring(0, 100)}...`);
+      // Reference to the specific park document
+      const parkDocRef = doc(db, 'test_dogparks', parkId);
       
-      // Create EventSource connection using React Native polyfill
-      const eventSource = new EventSourcePolyfill(sseUrl);
-
-      eventSource.onopen = () => {
-        console.log(`🟢 SSE connection opened for park ${parkId}`);
-      };
-
-      eventSource.onmessage = (event) => {
+      // Set up real-time listener
+      const unsubscribe = onSnapshot(parkDocRef, async (docSnapshot) => {
         try {
-          console.log(`📨 SSE message received for park ${parkId}:`, event.data);
-          const data = JSON.parse(event.data);
-          
-          if (data.type === 'park_update' && data.parkId === parkId) {
-            console.log(`🔄 SSE park update for ${parkId}: ${data.dogs.length} dogs`);
+          if (docSnapshot.exists()) {
+            const parkData = docSnapshot.data();
+            const checkedInDogIds = parkData.checkedInDogs || [];
+            
+            console.log(`🔄 Firestore update for park ${parkId}: ${checkedInDogIds.length} dogs`);
+            
+            // If no dogs checked in, return empty array
+            if (checkedInDogIds.length === 0) {
+              callback({
+                success: true,
+                dogs: [],
+                parkData: { checkedInDogs: [] }
+              });
+              return;
+            }
+            
+            // Fetch detailed dog information for each checked-in dog
+            const dogsCollectionRef = collection(db, 'dogs');
+            const dogsSnapshot = await getDocs(dogsCollectionRef);
+            
+            const checkedInDogs = [];
+            dogsSnapshot.forEach((dogDoc) => {
+              if (checkedInDogIds.includes(dogDoc.id)) {
+                const dogData = dogDoc.data();
+                checkedInDogs.push({
+                  id: dogDoc.id,
+                  name: dogData.name,
+                  breed: dogData.breed,
+                  age: dogData.age,
+                  emoji: dogData.emoji,
+                  owner_id: dogData.owner_id,
+                  energy_level: dogData.energy_level,
+                  photo_url: dogData.photo_url,
+                  friends: dogData.friends || []
+                });
+              }
+            });
             
             callback({
               success: true,
-              dogs: data.dogs,
-              parkData: { checkedInDogs: data.dogs }
+              dogs: checkedInDogs,
+              parkData: { checkedInDogs: checkedInDogs }
             });
-          } else if (data.type === 'connected') {
-            console.log(`✅ SSE connected to park ${parkId}`);
+            
+          } else {
+            console.log(`Park ${parkId} does not exist`);
+            callback({
+              success: false,
+              error: 'Park not found'
+            });
           }
         } catch (error) {
-          console.error('Error parsing SSE message:', error);
+          console.error('Error processing Firestore snapshot:', error);
+          callback({
+            success: false,
+            error: error.message
+          });
         }
-      };
-
-      eventSource.onerror = (error) => {
-        console.error(`❌ SSE connection error for park ${parkId}:`, error);
+      }, (error) => {
+        console.error(`❌ Firestore listener error for park ${parkId}:`, error);
         callback({
           success: false,
           error: 'Connection error'
         });
-      };
+      });
 
-      // Store the EventSource for cleanup
-      this.activeEventSources.set(`park_${parkId}`, eventSource);
+      // Store the unsubscribe function for cleanup
+      activeListeners.set(`park_${parkId}`, unsubscribe);
 
       // Return unsubscribe function
       return () => {
@@ -347,7 +331,7 @@ class DogParkService {
       };
 
     } catch (error) {
-      console.error('❌ Error setting up SSE connection:', error);
+      console.error('❌ Error setting up Firestore listener:', error);
       callback({
         success: false,
         error: error.message
@@ -378,28 +362,28 @@ class DogParkService {
   }
 
   /**
-   * Unsubscribe from a specific SSE listener
+   * Unsubscribe from a specific Firestore listener
    * @param {string} listenerId - The ID of the listener to unsubscribe
    */
   static unsubscribeFromListener(listenerId) {
-    const eventSource = this.activeEventSources.get(listenerId);
-    if (eventSource) {
-      eventSource.close();
-      this.activeEventSources.delete(listenerId);
-      console.log(`🔕 Unsubscribed from SSE listener: ${listenerId}`);
+    const unsubscribe = activeListeners.get(listenerId);
+    if (unsubscribe) {
+      console.log(`🔕 Unsubscribing from Firestore listener: ${listenerId}`);
+      unsubscribe();
+      activeListeners.delete(listenerId);
     }
   }
 
   /**
-   * Clean up all active SSE connections
+   * Clean up all active Firestore listeners
    */
   static cleanupAllListeners() {
-    console.log(`🧹 Cleaning up ${this.activeEventSources.size} active SSE connections`);
-    this.activeEventSources.forEach((eventSource, listenerId) => {
-      eventSource.close();
-      console.log(`🔕 Cleaned up SSE connection: ${listenerId}`);
+    console.log(`🧹 Cleaning up ${activeListeners.size} Firestore listeners`);
+    activeListeners.forEach((unsubscribe, listenerId) => {
+      console.log(`🔕 Unsubscribing from: ${listenerId}`);
+      unsubscribe();
     });
-    this.activeEventSources.clear();
+    activeListeners.clear();
   }
 
   // Helper function to get auth token (moved to static for SSE usage)

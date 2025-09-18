@@ -1,8 +1,6 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const { dogParksCollection, dogsCollection, serverTimestamp } = require('../config/database');
-const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
-const { broadcastParkUpdate, broadcastParkUpdateWebSocket, sseConnections } = require('../services/parkBroadcast');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -147,6 +145,8 @@ router.post('/:parkId/checkin', authenticateToken, async (req, res) => {
       });
     }
 
+    console.log('🏞️ Checking in dogs to park:', parkId, 'Dogs:', dogIds);
+
     // Verify the park exists
     const parkDoc = await dogParksCollection.doc(parkId).get();
     
@@ -178,15 +178,11 @@ router.post('/:parkId/checkin', authenticateToken, async (req, res) => {
     // Add new dog IDs to the array (avoid duplicates)
     const updatedCheckedInDogs = [...new Set([...currentCheckedInDogs, ...dogIds])];
 
-    // Update the park with new checked in dogs
+    // Update the park with new checked in dogs - Firestore real-time listeners will handle notifications
     await dogParksCollection.doc(parkId).update({
       checkedInDogs: updatedCheckedInDogs,
       updated_at: serverTimestamp()
     });
-
-    // Broadcast the update to SSE clients
-    broadcastParkUpdate(parkId);
-    // Note: WebSocket broadcast will be handled in the main server file
 
     console.log('✅ Dogs checked in successfully at park:', parkId);
     res.json({
@@ -247,23 +243,14 @@ router.post('/:parkId/checkout', authenticateToken, async (req, res) => {
     const parkData = parkDoc.data();
     const currentCheckedInDogs = parkData.checkedInDogs || [];
     
-    console.log('🔍 DEBUG - Current checked in dogs:', currentCheckedInDogs);
-    console.log('🔍 DEBUG - Dogs to remove:', dogIds);
-    
     // Remove the dog IDs from the array
     const updatedCheckedInDogs = currentCheckedInDogs.filter(dogId => !dogIds.includes(dogId));
-    
-    console.log('🔍 DEBUG - Updated checked in dogs after filter:', updatedCheckedInDogs);
 
-    // Update the park with the updated checked in dogs list
+    // Update the park with the updated checked in dogs list - Firestore real-time listeners will handle notifications
     await dogParksCollection.doc(parkId).update({
       checkedInDogs: updatedCheckedInDogs,
       updated_at: serverTimestamp()
     });
-
-    // Broadcast the update to SSE clients
-    broadcastParkUpdate(parkId);
-    // Note: WebSocket broadcast will be handled in the main server file
 
     console.log('✅ Dogs checked out successfully from park:', parkId);
     res.json({
@@ -344,113 +331,6 @@ router.get('/:parkId/dogs', authenticateToken, async (req, res) => {
       error: 'Internal server error' 
     });
   }
-});
-
-// SSE endpoint for real-time park updates
-router.get('/:parkId/live', async (req, res) => {
-  const { parkId } = req.params;
-  const { token } = req.query;
-  
-  // Authenticate token from query parameter
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-  } catch (error) {
-    console.error('JWT verification failed:', error);
-    return res.status(403).json({ error: 'Invalid token' });
-  }
-
-  console.log(`📡 New SSE connection for park ${parkId}`);
-
-  // Set SSE headers
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Cache-Control'
-  });
-
-  // Initialize connections set for this park if it doesn't exist
-  if (!sseConnections.has(parkId)) {
-    sseConnections.set(parkId, new Set());
-  }
-
-  // Add this connection to the park's connections
-  const parkConnections = sseConnections.get(parkId);
-  parkConnections.add(res);
-
-  // Send initial connection confirmation
-  res.write(`data: ${JSON.stringify({ type: 'connected', parkId })}\n\n`);
-
-  // Send current dogs list immediately with proper error handling
-  try {
-    // Get current park data
-    const parkDoc = await dogParksCollection.doc(parkId).get();
-    if (parkDoc.exists) {
-      const parkData = parkDoc.data();
-      const checkedInDogIds = parkData.checkedInDogs || [];
-      
-      let checkedInDogs = [];
-      
-      if (checkedInDogIds.length > 0) {
-        // Fetch all the dog documents
-        const dogPromises = checkedInDogIds.map(dogId => dogsCollection.doc(dogId).get());
-        const dogDocs = await Promise.all(dogPromises);
-        
-        dogDocs.forEach((dogDoc, index) => {
-          if (dogDoc.exists) {
-            const dogData = dogDoc.data();
-            checkedInDogs.push({
-              id: dogDoc.id,
-              name: dogData.name,
-              breed: dogData.breed,
-              age: dogData.age,
-              emoji: dogData.emoji,
-              owner_id: dogData.owner_id,
-              energy_level: dogData.energy_level,
-              photo_url: dogData.photo_url,
-              friends: dogData.friends || []
-            });
-          }
-        });
-      }
-
-      // Send initial data
-      const initialData = JSON.stringify({
-        type: 'park_update',
-        parkId,
-        dogs: checkedInDogs
-      });
-      
-      console.log(`📡 Sending initial data to new SSE client for park ${parkId}: ${checkedInDogs.length} dogs`);
-      res.write(`data: ${initialData}\n\n`);
-    }
-  } catch (error) {
-    console.error('Error sending initial SSE data:', error);
-    // Send empty list as fallback
-    res.write(`data: ${JSON.stringify({ type: 'park_update', parkId, dogs: [] })}\n\n`);
-  }
-
-  // Handle client disconnect
-  req.on('close', () => {
-    console.log(`📡 SSE connection closed for park ${parkId}`);
-    parkConnections.delete(res);
-    
-    // Clean up empty connection sets
-    if (parkConnections.size === 0) {
-      sseConnections.delete(parkId);
-    }
-  });
-
-  req.on('error', (error) => {
-    console.log('SSE connection error:', error);
-    parkConnections.delete(res);
-  });
 });
 
 module.exports = router;

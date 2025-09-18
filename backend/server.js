@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { createServer } = require('http');
-const { Server } = require('socket.io');
 
 // Import route modules
 const authRoutes = require('./routes/auth');
@@ -10,20 +9,11 @@ const dogRoutes = require('./routes/dogs');
 const parkRoutes = require('./routes/parks');
 const breedRoutes = require('./routes/breeds');
 
-// Import socket handlers
-const { setupSocketHandlers } = require('./sockets/parkSocket');
-
 // Import database for Firebase connection test
 const { db } = require('./config/database');
 
 const app = express();
 const server = createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
 
 const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost');
@@ -176,8 +166,7 @@ app.use('/api/dogs', dogRoutes);
 app.use('/api/dog-parks', parkRoutes);
 app.use('/api/dog-breeds', breedRoutes);
 
-// Setup Socket.IO handlers
-setupSocketHandlers(io);
+// Note: Socket.IO and WebSocket functionality removed - now using Firebase Firestore real-time listeners
 
 // Enhanced error handling for development
 if (isDevelopment) {
@@ -219,8 +208,8 @@ server.listen(PORT, HOST, () => {
   console.log(`DOGS: ${serverUrl}/api/dogs/*`);
   console.log(`PARKS: ${serverUrl}/api/dog-parks/*`);
   console.log(`BREEDS: ${serverUrl}/api/dog-breeds/*`);
-  console.log(`WEBSOCKET: Real-time updates via Socket.IO`);
-  console.log(`SSE: Server-Sent Events at /api/dog-parks/:parkId/live`);
+  console.log(`🔥 REAL-TIME: Firebase Firestore listeners for park updates`);
+  console.log(`📱 VERCEL-READY: Serverless compatible implementation`);
 });
 
-module.exports = { app, server, io };
+module.exports = { app, server };
