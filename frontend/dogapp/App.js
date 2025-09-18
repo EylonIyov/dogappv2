@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, View } from 'react-native';
+import { Platform, View, Text, ActivityIndicator } from 'react-native';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginScreen from './screens/LoginScreen';
@@ -19,7 +19,29 @@ import DogFriendsScreen from './screens/DogFriendsScreen';
 const Stack = createStackNavigator();
 
 function AppNavigator() {
-  const { currentUser } = useAuth();
+  const { currentUser, loading } = useAuth();
+
+  // Show loading screen while auth is being checked
+  if (loading) {
+    return (
+      <View style={{ 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        backgroundColor: '#f5f5f5'
+      }}>
+        <ActivityIndicator size="large" color="#4A90E2" />
+        <Text style={{ 
+          marginTop: 20, 
+          fontSize: 16, 
+          color: '#666',
+          fontWeight: '500'
+        }}>
+          Loading Dog App...
+        </Text>
+      </View>
+    );
+  }
 
   // Web-specific screen options to fix scrolling
   const webScreenOptions = Platform.OS === 'web' ? {

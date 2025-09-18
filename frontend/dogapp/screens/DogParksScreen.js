@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -23,39 +23,81 @@ export default function DogParksScreen({ navigation }) {
   const [showDogSelection, setShowDogSelection] = useState(false);
   const [selectedPark, setSelectedPark] = useState(null);
   const [selectedDogs, setSelectedDogs] = useState([]);
+  const [parksCheckedInDogs, setParksCheckedInDogs] = useState({});
   const { alertState, hideAlert, showError, showSuccess, showInfo } = useAlerts();
+
+  const unsubscribeRefs = useRef({});
 
   useEffect(() => {
     loadParks();
     loadDogs();
+
+    return () => {
+      console.log('🧹 Component unmounting, cleaning up listeners...');
+      Object.values(unsubscribeRefs.current).forEach(unsubscribe => {
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      });
+      DogParkService.cleanupAllListeners();
+    };
   }, []);
 
   const loadParks = async () => {
     try {
       setLoading(true);
       console.log('🔄 Loading dog parks from Firestore...');
-      const result = await DogParkService.getParks();
-      
-      if (result.success) {
-        console.log('✅ Parks loaded successfully:', result.parks.length, 'parks found');
-        setParks(result.parks);
-      } else {
-        console.error('❌ Failed to load parks:', result.error);
-        showError(result.error || 'Failed to load dog parks');
-      }
+
+      const unsubscribe = DogParkService.subscribeToAllParks((result) => {
+        if (result.success) {
+          console.log('✅ Parks updated via real-time listener:', result.parks.length, 'parks found');
+          setParks(result.parks);
+
+          result.parks.forEach(park => {
+            setupParkListener(park.id);
+          });
+        } else {
+          console.error('❌ Failed to load parks via real-time listener:', result.error);
+          showError(result.error || 'Failed to load dog parks');
+        }
+        setLoading(false);
+      });
+
+      unsubscribeRefs.current.allParks = unsubscribe;
+
     } catch (error) {
-      console.error('Error loading parks:', error);
+      console.error('Error setting up parks listener:', error);
       showError('Failed to load dog parks. Please try again.');
-    } finally {
       setLoading(false);
     }
+  };
+
+  const setupParkListener = (parkId) => {
+    if (unsubscribeRefs.current[`park_${parkId}`]) {
+      return;
+    }
+
+    const unsubscribe = DogParkService.subscribeToCheckedInDogs(parkId, (result) => {
+      if (result.success) {
+        console.log(`✅ Dogs updated for park ${parkId}:`, result.dogs.length, 'dogs checked in');
+
+        setParksCheckedInDogs(prev => ({
+          ...prev,
+          [parkId]: result.dogs
+        }));
+      } else {
+        console.error(`❌ Failed to get dogs for park ${parkId}:`, result.error);
+      }
+    });
+
+    unsubscribeRefs.current[`park_${parkId}`] = unsubscribe;
   };
 
   const loadDogs = async () => {
     try {
       console.log('🐕 Loading user dogs...');
       const result = await DogService.getDogs();
-      
+
       if (result.success) {
         console.log('✅ Dogs loaded successfully:', result.dogs.length, 'dogs found');
         setDogs(result.dogs);
@@ -72,7 +114,7 @@ export default function DogParksScreen({ navigation }) {
       showError('You need to add at least one dog before checking in at parks.', 'No Dogs Found');
       return;
     }
-    
+
     setSelectedPark(park);
     setSelectedDogs([]);
     setShowDogSelection(true);
@@ -84,7 +126,6 @@ export default function DogParksScreen({ navigation }) {
       return;
     }
 
-    // Call the backend to check in the dogs
     handleCheckInSubmit();
   };
 
@@ -92,19 +133,19 @@ export default function DogParksScreen({ navigation }) {
     try {
       const dogIds = selectedDogs.map(dog => dog.id);
       const result = await DogParkService.checkInDogs(selectedPark.id, dogIds);
-      
+
       if (result.success) {
-        
         setShowDogSelection(false);
         setSelectedPark(null);
-        
-        // Navigate to confirmation screen with park and dogs data
+
         navigation.navigate('CheckInConfirmation', {
           park: selectedPark,
           checkedInDogs: selectedDogs
         });
-        
+
         setSelectedDogs([]);
+
+        showSuccess('Dogs checked in successfully! 🎉');
       } else {
         showError(result.error || 'Failed to check in dogs');
       }
@@ -189,45 +230,79 @@ export default function DogParksScreen({ navigation }) {
     )
   );
 
-  const ParkCard = ({ park }) => (
-    <View style={styles.parkCard}>
-      <View style={styles.parkHeader}>
-        <View style={styles.parkInfo}>
-          <Text style={styles.parkName}>{park.name}</Text>
-          <Text style={styles.parkAddress}>{park.address}</Text>
-        </View>
-      </View>
+  const ParkCard = ({ park }) => {
+    const checkedInDogs = parksCheckedInDogs[park.id] || [];
+    const dogCount = checkedInDogs.length;
 
-      <View style={styles.amenitiesContainer}>
-        <Text style={styles.amenitiesTitle}>Amenities:</Text>
-        <View style={styles.amenitiesList}>
-          {park.amenities.map((amenity, index) => (
-            <View key={index} style={styles.amenityTag}>
-              <Text style={styles.amenityText}>{amenity}</Text>
+    return (
+      <View style={styles.parkCard}>
+        <View style={styles.parkHeader}>
+          <View style={styles.parkInfo}>
+            <Text style={styles.parkName}>{park.name}</Text>
+            <Text style={styles.parkAddress}>{park.address}</Text>
+            <View style={styles.dogCountContainer}>
+              <Text style={styles.dogCountText}>
+                🐕 {dogCount} {dogCount === 1 ? 'dog' : 'dogs'} currently here
+              </Text>
             </View>
-          ))}
+          </View>
+        </View>
+
+        <View style={styles.amenitiesContainer}>
+          <Text style={styles.amenitiesTitle}>Amenities:</Text>
+          <View style={styles.amenitiesList}>
+            {park.amenities.map((amenity, index) => (
+              <View key={index} style={styles.amenityTag}>
+                <Text style={styles.amenityText}>{amenity}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {checkedInDogs.length > 0 && (
+          <View style={styles.checkedInDogsContainer}>
+            <Text style={styles.checkedInDogsTitle}>Dogs here now:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.checkedInDogsList}>
+              {checkedInDogs.slice(0, 5).map((dog, index) => (
+                <View key={dog.id || index} style={styles.checkedInDogItem}>
+                  <DogImage
+                    source={{ uri: dog.photo_url }}
+                    style={styles.checkedInDogPhoto}
+                    placeholder={dog.emoji || '🐕'}
+                  />
+                  <Text style={styles.checkedInDogName} numberOfLines={1}>
+                    {dog.name}
+                  </Text>
+                </View>
+              ))}
+              {checkedInDogs.length > 5 && (
+                <View style={styles.moreDogsIndicator}>
+                  <Text style={styles.moreDogsText}>+{checkedInDogs.length - 5}</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        )}
+
+        <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={styles.checkInButton}
+            onPress={() => handleCheckIn(park)}
+          >
+            <Text style={styles.checkInButtonText}>🐾 Check In</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.directionsButton}
+            onPress={() => {
+              showInfo('Directions feature coming soon!', 'Info');
+            }}
+          >
+            <Text style={styles.directionsButtonText}>🗺️ Directions</Text>
+          </TouchableOpacity>
         </View>
       </View>
-
-      <View style={styles.cardActions}>
-        <TouchableOpacity
-          style={styles.checkInButton}
-          onPress={() => handleCheckIn(park)}
-        >
-          <Text style={styles.checkInButtonText}>🐾 Check In</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.directionsButton}
-          onPress={() => {
-            // Future: Open maps/directions
-            showInfo('Directions feature coming soon!', 'Info');
-          }}
-        >
-          <Text style={styles.directionsButtonText}>🗺️ Directions</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -337,6 +412,13 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 3,
   },
+  dogCountContainer: {
+    marginTop: 5,
+  },
+  dogCountText: {
+    fontSize: 14,
+    color: '#4A90E2',
+  },
   amenitiesContainer: {
     marginBottom: 15,
   },
@@ -362,6 +444,49 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#4A90E2',
     fontWeight: '500',
+  },
+  checkedInDogsContainer: {
+    marginBottom: 15,
+  },
+  checkedInDogsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  checkedInDogsList: {
+    flexDirection: 'row',
+  },
+  checkedInDogItem: {
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  checkedInDogPhoto: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#E9ECEF',
+  },
+  checkedInDogName: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 5,
+    maxWidth: 50,
+    textAlign: 'center',
+  },
+  moreDogsIndicator: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E8F4FD',
+  },
+  moreDogsText: {
+    fontSize: 12,
+    color: '#4A90E2',
+    fontWeight: 'bold',
   },
   cardActions: {
     flexDirection: 'row',

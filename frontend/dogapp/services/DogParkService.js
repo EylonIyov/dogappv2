@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiUrl, getApiConfig } from '../config';
+import { db } from '../firebase';
+import { collection, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 // Helper function to get auth token
 const getAuthToken = async () => {
@@ -58,6 +60,9 @@ const makeAuthenticatedRequest = async (endpoint, options = {}) => {
 };
 
 class DogParkService {
+  // Store active listeners to clean them up later
+  static activeListeners = new Map();
+
   static async getParks() {
     try {
       console.log('🏞️ Fetching dog parks from backend...');
@@ -272,6 +277,134 @@ class DogParkService {
       console.error('❌ Error getting dogs in park:', error);
       return { success: false, error: error.message };
     }
+  }
+
+  /**
+   * Subscribe to real-time updates of a specific dog park's checked-in dogs
+   * @param {string} parkId - The ID of the park to monitor
+   * @param {function} callback - Callback function to handle updates
+   * @returns {function} Unsubscribe function
+   */
+  static subscribeToCheckedInDogs(parkId, callback) {
+    try {
+      console.log(`🔔 Subscribing to real-time updates for park: ${parkId}`);
+      
+      const parkDocRef = doc(db, 'dogParks', parkId);
+      
+      const unsubscribe = onSnapshot(parkDocRef, (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const parkData = docSnapshot.data();
+          const checkedInDogs = parkData.checkedInDogs || [];
+          
+          console.log(`🔄 Real-time update for park ${parkId}:`, checkedInDogs.length, 'dogs checked in');
+          
+          // Call the callback with the updated dogs list
+          callback({
+            success: true,
+            dogs: checkedInDogs,
+            parkData: parkData
+          });
+        } else {
+          console.log(`❌ Park ${parkId} not found`);
+          callback({
+            success: false,
+            error: 'Park not found'
+          });
+        }
+      }, (error) => {
+        console.error(`❌ Error in real-time listener for park ${parkId}:`, error);
+        callback({
+          success: false,
+          error: error.message
+        });
+      });
+
+      // Store the unsubscribe function
+      this.activeListeners.set(`park_${parkId}`, unsubscribe);
+      
+      return unsubscribe;
+    } catch (error) {
+      console.error('❌ Error setting up real-time listener:', error);
+      callback({
+        success: false,
+        error: error.message
+      });
+      return () => {}; // Return empty unsubscribe function
+    }
+  }
+
+  /**
+   * Subscribe to real-time updates of all dog parks
+   * @param {function} callback - Callback function to handle updates
+   * @returns {function} Unsubscribe function
+   */
+  static subscribeToAllParks(callback) {
+    try {
+      console.log('🔔 Subscribing to real-time updates for all parks');
+      
+      const parksCollectionRef = collection(db, 'dogParks');
+      const parksQuery = query(parksCollectionRef, orderBy('name'));
+      
+      const unsubscribe = onSnapshot(parksQuery, (querySnapshot) => {
+        const parks = [];
+        querySnapshot.forEach((doc) => {
+          parks.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        
+        console.log('🔄 Real-time update for all parks:', parks.length, 'parks found');
+        
+        callback({
+          success: true,
+          parks: parks
+        });
+      }, (error) => {
+        console.error('❌ Error in real-time listener for all parks:', error);
+        callback({
+          success: false,
+          error: error.message
+        });
+      });
+
+      // Store the unsubscribe function
+      this.activeListeners.set('all_parks', unsubscribe);
+      
+      return unsubscribe;
+    } catch (error) {
+      console.error('❌ Error setting up real-time listener for all parks:', error);
+      callback({
+        success: false,
+        error: error.message
+      });
+      return () => {}; // Return empty unsubscribe function
+    }
+  }
+
+  /**
+   * Unsubscribe from a specific listener
+   * @param {string} listenerId - The ID of the listener to unsubscribe
+   */
+  static unsubscribeFromListener(listenerId) {
+    const unsubscribe = this.activeListeners.get(listenerId);
+    if (unsubscribe) {
+      unsubscribe();
+      this.activeListeners.delete(listenerId);
+      console.log(`🔕 Unsubscribed from listener: ${listenerId}`);
+    }
+  }
+
+  /**
+   * Clean up all active listeners
+   */
+  static cleanupAllListeners() {
+    console.log(`🧹 Cleaning up ${this.activeListeners.size} active listeners`);
+    this.activeListeners.forEach((unsubscribe, listenerId) => {
+      unsubscribe();
+      console.log(`🔕 Cleaned up listener: ${listenerId}`);
+    });
+    this.activeListeners.clear();
   }
 }
 

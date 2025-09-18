@@ -24,7 +24,7 @@ export const AuthProvider = ({ children }) => {
       if (storedToken) {
         // Add timeout to prevent hanging
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // Reduced to 3 seconds for web
 
         try {
           // Verify token with backend
@@ -182,14 +182,16 @@ export const AuthProvider = ({ children }) => {
   const value = {
     currentUser,
     token,
+    loading,
     login,
     register,
     logout,
   };
 
+  // Always render children, but show loading state if needed
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, ScrollView, Platform } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../contexts/AuthContext';
 import CustomAlert from '../components/CustomAlert';
 import { useAlerts } from '../components/useCustomAlert';
@@ -10,28 +9,73 @@ export default function SignupScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
   const { alertState, hideAlert, showError, showSuccess } = useAlerts();
 
-  const onDateChange = (event, selectedDate) => {
-    const currentDate = selectedDate || dateOfBirth;
-    setDateOfBirth(currentDate);
+  const handleDateChange = (text) => {
+    // Allow only numbers and dashes, format as YYYY-MM-DD
+    let cleaned = text.replace(/[^0-9]/g, '');
+    
+    if (cleaned.length >= 4) {
+      cleaned = cleaned.substring(0, 4) + '-' + cleaned.substring(4);
+    }
+    if (cleaned.length >= 7) {
+      cleaned = cleaned.substring(0, 7) + '-' + cleaned.substring(7, 9);
+    }
+    
+    // Limit to YYYY-MM-DD format
+    if (cleaned.length > 10) {
+      cleaned = cleaned.substring(0, 10);
+    }
+    
+    setDateOfBirth(cleaned);
   };
 
-  const toggleDatePicker = () => {
-    setShowDatePicker(!showDatePicker);
-  };
+  const validateDate = (dateString) => {
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(dateString)) {
+      return { valid: false, error: 'Please enter date in YYYY-MM-DD format' };
+    }
 
-  const formatDate = (date) => {
-    return date.toLocaleDateString('en-CA');
+    const date = new Date(dateString);
+    const today = new Date();
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return { valid: false, error: 'Please enter a valid date' };
+    }
+
+    // Check if date is in the future
+    if (date > today) {
+      return { valid: false, error: 'Date of birth cannot be in the future' };
+    }
+
+    // Check if date is too old
+    const minDate = new Date(1920, 0, 1);
+    if (date < minDate) {
+      return { valid: false, error: 'Please enter a valid birth year' };
+    }
+
+    // Check age (must be at least 13)
+    const age = today.getFullYear() - date.getFullYear();
+    const monthDiff = today.getMonth() - date.getMonth();
+    let calculatedAge = age;
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < date.getDate())) {
+      calculatedAge--;
+    }
+    
+    if (calculatedAge < 13) {
+      return { valid: false, error: 'You must be at least 13 years old to register' };
+    }
+
+    return { valid: true };
   };
 
   const handleSignUp = async () => {
-    if (!email.trim() || !password.trim() || !confirmPassword.trim() || !fullName.trim() || !gender.trim()) {
+    if (!email.trim() || !password.trim() || !confirmPassword.trim() || !fullName.trim() || !dateOfBirth.trim() || !gender.trim()) {
       showError('Please fill in all required fields');
       return;
     }
@@ -52,27 +96,16 @@ export default function SignupScreen({ navigation }) {
       return;
     }
 
-    const today = new Date();
-    if (dateOfBirth > today) {
-      showError('Date of birth cannot be in the future');
-      return;
-    }
-
-    const age = today.getFullYear() - dateOfBirth.getFullYear();
-    const monthDiff = today.getMonth() - dateOfBirth.getMonth();
-    let calculatedAge = age;
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dateOfBirth.getDate())) {
-      calculatedAge--;
-    }
-    
-    if (calculatedAge < 13) {
-      showError('You must be at least 13 years old to register');
+    // Validate date
+    const dateValidation = validateDate(dateOfBirth);
+    if (!dateValidation.valid) {
+      showError(dateValidation.error);
       return;
     }
 
     setIsLoading(true);
     try {
-      const result = await register(email, password, fullName, formatDate(dateOfBirth), gender);
+      const result = await register(email, password, fullName, dateOfBirth, gender);
       
       if (result.success) {
         console.log('User registered successfully');
@@ -132,27 +165,18 @@ export default function SignupScreen({ navigation }) {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>🎂 Date of Birth *</Text>
-            <TouchableOpacity 
-              style={styles.datePickerButton}
-              onPress={toggleDatePicker}
-            >
-              <Text style={styles.datePickerText}>
-                {formatDate(dateOfBirth)} 📅
-              </Text>
-            </TouchableOpacity>
-            
-            {showDatePicker && (
-              <DateTimePicker
-                testID="dateTimePicker"
-                value={dateOfBirth}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={onDateChange}
-                maximumDate={new Date()}
-                minimumDate={new Date(1920, 0, 1)}
-              />
-            )}
+            <Text style={styles.inputLabel}>🎂 Date of Birth * (YYYY-MM-DD)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="1990-01-15"
+              placeholderTextColor="#A0A0A0"
+              value={dateOfBirth}
+              onChangeText={handleDateChange}
+              keyboardType={Platform.OS === 'web' ? 'default' : 'numeric'}
+              maxLength={10}
+              autoCorrect={false}
+            />
+            <Text style={styles.helperText}>Format: Year-Month-Day (e.g., 1990-01-15)</Text>
           </View>
 
           <View style={styles.inputContainer}>
@@ -321,6 +345,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
   signupButton: {
     backgroundColor: '#4A90E2',
     borderRadius: 12,
@@ -390,17 +420,5 @@ const styles = StyleSheet.create({
   },
   selectedGenderText: {
     color: '#FFFFFF',
-  },
-  datePickerButton: {
-    backgroundColor: '#F8F9FA',
-    borderWidth: 2,
-    borderColor: '#E9ECEF',
-    borderRadius: 12,
-    padding: 15,
-    alignItems: 'center',
-  },
-  datePickerText: {
-    fontSize: 16,
-    color: '#333',
   },
 });

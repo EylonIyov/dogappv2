@@ -256,6 +256,30 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'Dog App Backend is running!' });
 });
 
+// Debug endpoint to test Firebase connection
+app.get('/debug/firebase', async (req, res) => {
+  try {
+    console.log('🔍 Testing Firebase connection...');
+    
+    // Test basic Firebase connection
+    const testDoc = await db.collection('test').doc('connection-test').get();
+    console.log('✅ Firebase connection successful');
+    
+    res.json({ 
+      success: true, 
+      message: 'Firebase connection working',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Firebase connection failed:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Firebase connection failed',
+      details: error.message 
+    });
+  }
+});
+
 // User Registration
 app.post('/api/auth/register', async (req, res) => {
   try {

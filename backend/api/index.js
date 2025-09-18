@@ -12,9 +12,9 @@ const { uploadToS3, validateImageFile } = require('../dogUploadPicture');
 const app = express();
 
 // Firestore collections
-const usersCollection = db.collection('users');
+const usersCollection = db.collection('test_users');
 const dogsCollection = db.collection('dogs');
-const dogParksCollection = db.collection('dog-parks');
+const dogParksCollection = db.collection('test_dogparks');
 const friendRequestsCollection = db.collection('friend-requests');
 const notificationsCollection = db.collection('notifications');
 
@@ -88,20 +88,207 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Debug Firebase connection endpoint
+app.get('/debug/firebase', async (req, res) => {
+  try {
+    console.log('🔍 Testing Firebase connection...');
+    
+    // Test basic Firestore read operation
+    const testDoc = await db.collection('test').doc('connection-test').get();
+    console.log('✅ Firebase connection successful');
+    
+    res.json({ 
+      success: true, 
+      message: 'Firebase connection working',
+      timestamp: new Date().toISOString(),
+      hasDocument: testDoc.exists
+    });
+  } catch (error) {
+    console.error('❌ Firebase connection failed:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Firebase connection failed',
+      details: error.message,
+      code: error.code || 'UNKNOWN_ERROR'
+    });
+  }
+});
+
+// Debug environment variables endpoint
+app.get('/debug/env', (req, res) => {
+  const firebaseVars = {
+    hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
+    hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
+    hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
+    hasClientId: !!process.env.FIREBASE_CLIENT_ID,
+    hasPrivateKeyId: !!process.env.FIREBASE_PRIVATE_KEY_ID,
+    hasCertUrl: !!process.env.FIREBASE_CLIENT_X509_CERT_URL,
+    nodeEnv: process.env.NODE_ENV,
+    projectId: process.env.FIREBASE_PROJECT_ID ? 'SET' : 'NOT SET'
+  };
+  
+  res.json({
+    success: true,
+    firebase: firebaseVars,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Test user creation and authentication endpoint
+app.post('/debug/test-auth', async (req, res) => {
+  try {
+    const testEmail = 'test@dogapp.com';
+    const testPassword = 'testpassword123';
+    const testName = 'Test User';
+    
+    console.log('🧪 Testing user authentication flow...');
+    
+    // Step 1: Check if test user already exists and delete if found
+    console.log('📋 Step 1: Checking for existing test user...');
+    const existingUserQuery = await usersCollection.where('email', '==', testEmail).get();
+    
+    if (!existingUserQuery.empty) {
+      console.log('🗑️ Found existing test user, deleting...');
+      const batch = db.batch();
+      existingUserQuery.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+      console.log('✅ Existing test user deleted');
+    }
+    
+    // Step 2: Create test user with hashed password
+    console.log('👤 Step 2: Creating test user...');
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(testPassword, saltRounds);
+    
+    const userDoc = await usersCollection.add({
+      email: testEmail,
+      password: hashedPassword,
+      name: testName,
+      created_at: serverTimestamp()
+    });
+    
+    console.log('✅ Test user created with ID:', userDoc.id);
+    
+    // Step 3: Verify user was created correctly
+    console.log('🔍 Step 3: Verifying user creation...');
+    const createdUser = await userDoc.get();
+    const createdUserData = createdUser.data();
+    
+    if (!createdUser.exists) {
+      throw new Error('User document was not created');
+    }
+    
+    console.log('✅ User verification passed');
+    
+    // Step 4: Test login with the created user
+    console.log('🔐 Step 4: Testing login...');
+    
+    // Find user by email (simulating login process)
+    const userSnapshot = await usersCollection.where('email', '==', testEmail).get();
+    
+    if (userSnapshot.empty) {
+      throw new Error('User not found during login test');
+    }
+    
+    const userDocFromLogin = userSnapshot.docs[0];
+    const userDataFromLogin = userDocFromLogin.data();
+    
+    // Test password verification
+    const isPasswordValid = await bcrypt.compare(testPassword, userDataFromLogin.password);
+    
+    if (!isPasswordValid) {
+      throw new Error('Password verification failed');
+    }
+    
+    console.log('✅ Password verification passed');
+    
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: userDocFromLogin.id, email: userDataFromLogin.email },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    console.log('✅ JWT token generated successfully');
+    
+    // Step 5: Test token verification
+    console.log('🎫 Step 5: Testing token verification...');
+    
+    const decoded = jwt.verify(token, JWT_SECRET);
+    console.log('✅ Token verification passed');
+    
+    res.json({
+      success: true,
+      message: 'Authentication flow test completed successfully',
+      testResults: {
+        userCreated: true,
+        userFound: true,
+        passwordVerified: true,
+        tokenGenerated: true,
+        tokenVerified: true,
+        userId: userDocFromLogin.id,
+        testCredentials: {
+          email: testEmail,
+          password: testPassword,
+          note: 'You can use these credentials to test login via /api/auth/login'
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Authentication test failed:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Authentication test failed',
+      details: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 // AUTHENTICATION ROUTES
 
 // Register endpoint
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { 
+      email, 
+      password, 
+      fullName, 
+      name,
+      dateOfBirth, 
+      gender, 
+      profileImageUrl, 
+      preferences 
+    } = req.body;
 
-    if (!email || !password || !name) {
+    // Accept both 'name' and 'fullName' for backwards compatibility
+    const userName = name || fullName;
+
+    if (!email || !password || !userName) {
       return res.status(400).json({ error: 'Email, password, and name are required' });
     }
+
+    console.log('📝 Registration attempt for:', email);
+    console.log('📋 Registration data received:', {
+      email,
+      hasPassword: !!password,
+      fullName,
+      name,
+      userName,
+      dateOfBirth,
+      gender,
+      hasProfileImage: !!profileImageUrl,
+      hasPreferences: !!preferences
+    });
 
     // Check if user already exists
     const existingUser = await usersCollection.where('email', '==', email).get();
     if (!existingUser.empty) {
+      console.log('❌ User already exists:', email);
       return res.status(400).json({ error: 'User already exists with this email' });
     }
 
@@ -109,13 +296,27 @@ app.post('/api/auth/register', async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Create user in Firestore
-    const userDoc = await usersCollection.add({
+    // Create user document with all provided fields
+    const userData = {
       email,
       password: hashedPassword,
-      name,
+      name: userName,
       created_at: serverTimestamp()
+    };
+
+    // Add optional fields if provided
+    if (dateOfBirth) userData.date_of_birth = dateOfBirth;
+    if (gender) userData.gender = gender;
+    if (profileImageUrl) userData.profile_image_url = profileImageUrl;
+    if (preferences) userData.preferences = preferences;
+
+    console.log('💾 Creating user with data:', {
+      ...userData,
+      password: '[HASHED]'
     });
+
+    // Create user in Firestore
+    const userDoc = await usersCollection.add(userData);
 
     // Generate JWT token
     const token = jwt.sign(
@@ -124,18 +325,22 @@ app.post('/api/auth/register', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    console.log('✅ User registered successfully:', email);
+    console.log('✅ User registered successfully:', email, 'with ID:', userDoc.id);
+
     res.status(201).json({
       message: 'User registered successfully',
       token,
       user: {
         id: userDoc.id,
         email,
-        name
+        name: userName,
+        date_of_birth: dateOfBirth,
+        gender,
+        profile_image_url: profileImageUrl
       }
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('❌ Registration error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -153,7 +358,7 @@ app.post('/api/auth/login', async (req, res) => {
     const userSnapshot = await usersCollection.where('email', '==', email).get();
     
     if (userSnapshot.empty) {
-      return res.status(400).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const userDoc = userSnapshot.docs[0];
@@ -163,7 +368,7 @@ app.post('/api/auth/login', async (req, res) => {
     const isPasswordValid = await bcrypt.compare(password, userData.password);
     
     if (!isPasswordValid) {
-      return res.status(400).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     // Generate JWT token
