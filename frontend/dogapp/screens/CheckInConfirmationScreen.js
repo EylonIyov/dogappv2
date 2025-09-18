@@ -52,79 +52,60 @@ export default function CheckInConfirmationScreen({ route, navigation }) {
   const setupLiveUpdates = async () => {
     try {
       setLoadingOtherDogs(true);
-      console.log('📡 Setting up Firestore listener for park:', park.id);
+      console.log('📡 [CheckInConfirmation] Setting up Firestore listener for park:', park.id);
       
-      // Subscribe to real-time updates using Firestore listeners
+      // Subscribe to real-time updates using Firestore listeners with fallback
       const unsubscribe = DogParkService.subscribeToCheckedInDogs(park.id, (result) => {
-        console.log('📡 Firestore callback received:', result);
+        console.log('📡 [CheckInConfirmation] Firestore callback received:', {
+          success: result.success,
+          totalDogs: result.dogs?.length || 0,
+          dogNames: result.dogs?.map(d => d.name) || []
+        });
         
         if (result.success) {
-          console.log('📡 Received Firestore park update:', result.dogs.length, 'total dogs');
+          console.log('📡 [CheckInConfirmation] Received park update:', result.dogs.length, 'total dogs');
           
-          // Filter out current user's dogs
+          // Filter out current user's dogs - create new array references
           const myDogIds = checkedInDogs.map(dog => dog.id);
           const otherDogsInPark = result.dogs.filter(dog => 
             dog.owner_id !== currentUser?.id && !myDogIds.includes(dog.id)
           );
 
-          console.log('📡 Updating other dogs list with', otherDogsInPark.length, 'dogs');
-          console.log('📡 Other dogs:', otherDogsInPark.map(d => d.name));
+          console.log('📡 [CheckInConfirmation] My dog IDs:', myDogIds);
+          console.log('📡 [CheckInConfirmation] Current user ID:', currentUser?.id);
+          console.log('📡 [CheckInConfirmation] Filtered other dogs:', otherDogsInPark.length, 'dogs');
+          console.log('📡 [CheckInConfirmation] Other dog names:', otherDogsInPark.map(d => `${d.name} (owner: ${d.owner_id})`));
           
-          setOtherDogs(otherDogsInPark);
+          // Force new array reference to ensure state update
+          setOtherDogs(prevDogs => {
+            console.log('📡 [CheckInConfirmation] Previous other dogs:', prevDogs.length);
+            console.log('📡 [CheckInConfirmation] New other dogs:', otherDogsInPark.length);
+            return [...otherDogsInPark];
+          });
           setLoadingOtherDogs(false);
         } else {
-          console.error('❌ Firestore listener error:', result.error);
+          console.error('❌ [CheckInConfirmation] Listener error:', result.error);
           
-          // Handle different error types
+          // The DogParkService now handles fallback automatically
+          // We just need to handle the error case gracefully
           if (result.error && result.error.includes('Authentication')) {
             showError('Session expired. Please log in again.');
-            setLoadingOtherDogs(false);
-          } else if (result.error && result.error.includes('Connection')) {
-            console.log('🔄 Firestore connection failed, falling back to manual loading...');
-            // Fallback to manual loading for connection issues
-            loadOtherDogs();
-          } else {
-            // Only fallback to manual loading for serious errors
-            console.log('🔄 Falling back to manual loading due to Firestore error');
-            loadOtherDogs();
+          } else if (result.error && !result.error.includes('API')) {
+            // Only show error if it's not already handled by API fallback
+            showError(`Connection issue: ${result.error}`);
           }
+          
+          setLoadingOtherDogs(false);
         }
       });
 
       setSseUnsubscribe(() => unsubscribe);
-      console.log('📡 Live Firestore setup complete');
+      console.log('📡 [CheckInConfirmation] Live updates setup complete (with automatic fallback)');
 
     } catch (error) {
-      console.error('Error setting up live updates:', error);
-      // Only as last resort fallback
-      loadOtherDogs();
-    }
-  };
-
-  // Keep loadOtherDogs as fallback only
-  const loadOtherDogs = async () => {
-    try {
-      setLoadingOtherDogs(true);
-      console.log('🐕 Loading other dogs in park (fallback)...');
-      
-      const result = await DogParkService.getDogsInPark(park.id);
-      
-      if (result.success) {
-        // Filter out the current user's dogs
-        const myDogIds = checkedInDogs.map(dog => dog.id);
-        const otherDogsInPark = result.dogs.filter(dog => 
-          dog.owner_id !== currentUser?.id && !myDogIds.includes(dog.id)
-        );
-        
-        console.log('✅ Found', otherDogsInPark.length, 'other dogs in park (fallback)');
-        setOtherDogs(otherDogsInPark);
-      } else {
-        console.error('❌ Failed to load other dogs:', result.error);
-      }
-    } catch (error) {
-      console.error('❌ Error loading other dogs:', error);
-    } finally {
+      console.error('❌ [CheckInConfirmation] Error setting up live updates:', error);
       setLoadingOtherDogs(false);
+      showError('Failed to set up real-time updates. Please refresh the page.');
     }
   };
 

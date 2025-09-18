@@ -73,24 +73,47 @@ export default function DogParksScreen({ navigation }) {
   };
 
   const setupParkListener = (parkId) => {
+    // Check if we already have a listener for this park
     if (unsubscribeRefs.current[`park_${parkId}`]) {
+      console.log(`⚠️ Listener already exists for park ${parkId}, skipping setup`);
       return;
     }
 
+    console.log(`🎧 Setting up new park listener for ${parkId}`);
+
     const unsubscribe = DogParkService.subscribeToCheckedInDogs(parkId, (result) => {
+      console.log(`🔔 [DogParksScreen] Callback received for park ${parkId}:`, {
+        success: result.success,
+        dogCount: result.dogs?.length || 0,
+        dogNames: result.dogs?.map(d => d.name) || []
+      });
+
       if (result.success) {
         console.log(`✅ Dogs updated for park ${parkId}:`, result.dogs.length, 'dogs checked in');
+        console.log(`📝 Dogs list:`, result.dogs.map(d => d.name));
 
-        setParksCheckedInDogs(prev => ({
-          ...prev,
-          [parkId]: result.dogs
-        }));
+        // Force a new object reference to ensure state update triggers re-render
+        setParksCheckedInDogs(prev => {
+          const newState = { ...prev };
+          newState[parkId] = [...result.dogs]; // Create new array reference
+          console.log(`🔄 Updated state for park ${parkId}:`, newState[parkId].map(d => d.name));
+          console.log(`🔄 Total parks in state:`, Object.keys(newState).length);
+          return newState;
+        });
       } else {
         console.error(`❌ Failed to get dogs for park ${parkId}:`, result.error);
+        
+        // On error, ensure we clear the dogs for this park
+        setParksCheckedInDogs(prev => {
+          const newState = { ...prev };
+          newState[parkId] = [];
+          return newState;
+        });
       }
     });
 
     unsubscribeRefs.current[`park_${parkId}`] = unsubscribe;
+    console.log(`✅ Listener registered for park ${parkId}`);
   };
 
   const loadDogs = async () => {
