@@ -98,4 +98,6 @@ yarn-error.*
 *.tsbuildinfo
 
 
-.vercel
+.
+
+frontend/dogapp/firebase.js

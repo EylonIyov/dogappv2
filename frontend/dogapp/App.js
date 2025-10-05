@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import DevPanel from './components/DevPanel';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
+import MapScreen from './screens/MapScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import AddDogScreen from './screens/AddDogScreen';
 import DogProfileScreen from './screens/DogProfileScreen';
@@ -48,14 +49,12 @@ function AppNavigator() {
   const webScreenOptions = Platform.OS === 'web' ? {
     cardStyle: { 
       flex: 1,
-      // The following properties will be applied to the stack navigator's card.
-      // This allows the content of each screen to grow and scroll as needed.
       display: 'flex',
       flexDirection: 'column',
     },
     headerStyle: {
       backgroundColor: '#4A90E2',
-      position: 'relative' // Don't use fixed positioning
+      position: 'relative'
     },
     headerTintColor: '#fff',
     headerTitleStyle: {
@@ -79,14 +78,21 @@ function AppNavigator() {
         screenOptions={webScreenOptions}
       >
         {currentUser ? (
-          // User is authenticated - show app screens
+          // User is authenticated - show app screens with Map as home
           <>
+            <Stack.Screen 
+              name="Map" 
+              component={MapScreen} 
+              options={{ 
+                headerShown: false, // Hide header for map screen
+                headerLeft: null,
+              }}
+            />
             <Stack.Screen 
               name="Dashboard" 
               component={DashboardScreen} 
               options={{ 
                 title: '🐕 My Dogs',
-                headerLeft: null, // Prevent going back to login
               }}
             />
             <Stack.Screen 
