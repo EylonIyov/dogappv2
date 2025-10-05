@@ -1,10 +1,6 @@
 {
     "servers": {
       "playwright": {
-        "command": "npx",
-        "args": ["@playwright/mcp@latest"]
-      },
-      "my-mcp-server-1fbe7229": {
         "type": "stdio",
         "command": "npx",
         "args": [
