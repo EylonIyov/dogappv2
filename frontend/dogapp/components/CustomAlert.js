@@ -68,36 +68,30 @@ const CustomAlert = ({
 }) => {
   const getIconForType = () => {
     switch (type) {
-      case 'success': return '✅';
-      case 'error': return '❌';
-      case 'warning': return '⚠️';
+      case 'success': return '✓';
+      case 'error': return '✕';
+      case 'warning': return '!';
       case 'info':
-      default: return 'ℹ️';
+      default: return 'i';
     }
   };
 
   const getColorForType = () => {
     switch (type) {
-      case 'success': return '#4CAF50';
-      case 'error': return '#FF6B6B';
-      case 'warning': return '#FF9800';
+      case 'success': return '#6B6B6B';
+      case 'error': return '#6B6B6B';
+      case 'warning': return '#6B6B6B';
       case 'info':
-      default: return '#4A90E2';
+      default: return '#6B6B6B';
     }
   };
 
   if (!visible) return null;
 
   const handleConfirm = () => {
-    console.log('🔵 [CustomAlert] handleConfirm called');
-    console.log('🔵 [CustomAlert] onConfirm callback exists:', onConfirm ? 'YES' : 'NO');
-    
     if (onConfirm) {
-      console.log('🔵 [CustomAlert] About to call onConfirm callback...');
       onConfirm();
-      console.log('🔵 [CustomAlert] onConfirm callback completed');
     } else {
-      console.log('🔵 [CustomAlert] No onConfirm callback, calling onClose instead');
       onClose();
     }
   };
@@ -126,14 +120,16 @@ const CustomAlert = ({
               <TouchableOpacity
                 style={[styles.button, styles.cancelButton]}
                 onPress={onClose}
+                activeOpacity={0.8}
               >
                 <Text style={styles.cancelButtonText}>{cancelText}</Text>
               </TouchableOpacity>
             )}
             
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: getColorForType() }, !showCancel && styles.singleButton]}
+              style={[styles.button, styles.confirmButton, !showCancel && styles.singleButton]}
               onPress={handleConfirm}
+              activeOpacity={0.8}
             >
               <Text style={styles.buttonText}>{confirmText}</Text>
             </TouchableOpacity>
@@ -153,46 +149,46 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   alertContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
-    width: width > 400 ? 350 : width - 40,
-    maxWidth: 400,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    padding: 20,
+    width: width > 400 ? 320 : width - 40,
+    maxWidth: 360,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 8,
+      height: 4,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 10,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
   iconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   icon: {
-    fontSize: 30,
+    fontSize: 24,
     color: '#FFFFFF',
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: '#333',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   message: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 14,
+    color: '#555',
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 24,
+    lineHeight: 20,
+    marginBottom: 20,
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -203,29 +199,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   button: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 8,
-    minWidth: 100,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 6,
+    minWidth: 90,
   },
   singleButton: {
     alignSelf: 'center',
   },
   buttonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '600',
     textAlign: 'center',
   },
   cancelButton: {
-    backgroundColor: '#CCCCCC',
+    backgroundColor: '#E0E0E0',
     marginRight: 8,
   },
   cancelButtonText: {
     color: '#333333',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '600',
     textAlign: 'center',
+  },
+  confirmButton: {
+    backgroundColor: '#6B6B6B',
   },
 });
 

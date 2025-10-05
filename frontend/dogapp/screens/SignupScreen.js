@@ -1,268 +1,427 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, ScrollView, Platform } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+} from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import CustomAlert from '../components/CustomAlert';
 import { useAlerts } from '../components/useCustomAlert';
 
 export default function SignupScreen({ navigation }) {
+  const [isSignupMode, setIsSignupMode] = useState(true); // Toggle between signup and login
+  const [currentStep, setCurrentStep] = useState(1);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showVerifyPassword, setShowVerifyPassword] = useState(false);
+  
+  // Form data
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [verifyPassword, setVerifyPassword] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { register } = useAuth();
+  
+  const { login, register } = useAuth();
   const { alertState, hideAlert, showError, showSuccess } = useAlerts();
 
-  const handleDateChange = (text) => {
-    // Allow only numbers and dashes, format as YYYY-MM-DD
-    let cleaned = text.replace(/[^0-9]/g, '');
-    
-    if (cleaned.length >= 4) {
-      cleaned = cleaned.substring(0, 4) + '-' + cleaned.substring(4);
+  const totalSteps = 3;
+
+  const handleNext = () => {
+    // LOGIN MODE - Simple validation
+    if (!isSignupMode) {
+      handleLogin();
+      return;
     }
-    if (cleaned.length >= 7) {
-      cleaned = cleaned.substring(0, 7) + '-' + cleaned.substring(7, 9);
+
+    // SIGNUP MODE - Validate current step
+    if (currentStep === 1) {
+      if (!fullName.trim()) {
+        showError('Please enter your full name');
+        return;
+      }
+      if (!email.trim()) {
+        showError('Please enter your email address');
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        showError('Please enter a valid email address');
+        return;
+      }
+      if (!password.trim()) {
+        showError('Please create a password');
+        return;
+      }
+      if (password.length < 6) {
+        showError('Password must be at least 6 characters long');
+        return;
+      }
+      if (!verifyPassword.trim()) {
+        showError('Please verify your password');
+        return;
+      }
+      if (password !== verifyPassword) {
+        showError('Passwords do not match');
+        return;
+      }
     }
-    
-    // Limit to YYYY-MM-DD format
-    if (cleaned.length > 10) {
-      cleaned = cleaned.substring(0, 10);
+
+    if (currentStep < totalSteps) {
+      setCurrentStep(currentStep + 1);
+    } else {
+      handleSignup();
     }
-    
-    setDateOfBirth(cleaned);
   };
 
-  const validateDate = (dateString) => {
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(dateString)) {
-      return { valid: false, error: 'Please enter date in YYYY-MM-DD format' };
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    } else {
+      navigation.goBack();
     }
-
-    const date = new Date(dateString);
-    const today = new Date();
-    
-    // Check if date is valid
-    if (isNaN(date.getTime())) {
-      return { valid: false, error: 'Please enter a valid date' };
-    }
-
-    // Check if date is in the future
-    if (date > today) {
-      return { valid: false, error: 'Date of birth cannot be in the future' };
-    }
-
-    // Check if date is too old
-    const minDate = new Date(1920, 0, 1);
-    if (date < minDate) {
-      return { valid: false, error: 'Please enter a valid birth year' };
-    }
-
-    // Check age (must be at least 13)
-    const age = today.getFullYear() - date.getFullYear();
-    const monthDiff = today.getMonth() - date.getMonth();
-    let calculatedAge = age;
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < date.getDate())) {
-      calculatedAge--;
-    }
-    
-    if (calculatedAge < 13) {
-      return { valid: false, error: 'You must be at least 13 years old to register' };
-    }
-
-    return { valid: true };
   };
 
-  const handleSignUp = async () => {
-    if (!email.trim() || !password.trim() || !confirmPassword.trim() || !fullName.trim() || !dateOfBirth.trim() || !gender.trim()) {
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      showError('Please enter both email and password');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await login(email, password);
+      if (result.success) {
+        console.log('User logged in successfully');
+        // Navigation happens automatically via auth state change
+      } else {
+        showError(result.error || 'Login failed', 'Login Error');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      showError('An unexpected error occurred. Please try again.', 'Error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignup = async () => {
+    if (!dateOfBirth.trim() || !gender.trim()) {
       showError('Please fill in all required fields');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      showError('Passwords do not match');
-      return;
-    }
-
-    if (password.length < 6) {
-      showError('Password must be at least 6 characters long');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      showError('Please enter a valid email address');
-      return;
-    }
-
-    // Validate date
-    const dateValidation = validateDate(dateOfBirth);
-    if (!dateValidation.valid) {
-      showError(dateValidation.error);
       return;
     }
 
     setIsLoading(true);
     try {
       const result = await register(email, password, fullName, dateOfBirth, gender);
-      
       if (result.success) {
-        console.log('User registered successfully');
-        showSuccess('Account created successfully! Welcome to DogApp! 🐕', 'Success');
+        showSuccess('Account created successfully! Welcome! 🐕', 'Success');
       } else {
-        if (result.error && result.error.includes('already exists')) {
-          showError(result.error, 'Email Already Registered');
-        } else {
-          showError(result.error, 'Sign Up Error');
-        }
+        showError(result.error || 'Registration failed', 'Sign Up Error');
       }
     } catch (error) {
-      console.error('Sign up error:', error);
-      showError('An unexpected error occurred. Please try again.', 'Sign Up Error');
+      console.error('Registration error:', error);
+      showError('An unexpected error occurred. Please try again.', 'Error');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const toggleMode = () => {
+    setIsSignupMode(!isSignupMode);
+    setCurrentStep(1);
+    // Clear form when switching modes
+    setFullName('');
+    setEmail('');
+    setPassword('');
+    setVerifyPassword('');
+    setDateOfBirth('');
+    setGender('');
+  };
+
+  const renderProgressIndicator = () => (
+    <View style={styles.progressContainer}>
+      {[1, 2, 3].map((step) => (
+        <View
+          key={step}
+          style={[
+            styles.progressBar,
+            currentStep >= step ? styles.progressBarActive : styles.progressBarInactive,
+          ]}
+        />
+      ))}
+    </View>
+  );
+
+  const renderLoginForm = () => (
+    <View style={styles.formContainer}>
+      <Text style={styles.title}>Log In</Text>
+
+      {/* Email Field */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Email</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter your email address"
+          placeholderTextColor="#999"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!isLoading}
+        />
+      </View>
+
+      {/* Password Field */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Password</Text>
+        <View style={styles.passwordContainer}>
+          <TextInput
+            style={[styles.input, styles.passwordInput]}
+            placeholder="Enter your password"
+            placeholderTextColor="#999"
+            secureTextEntry={!showPassword}
+            value={password}
+            onChangeText={setPassword}
+            editable={!isLoading}
+          />
+          <TouchableOpacity
+            style={styles.eyeIcon}
+            onPress={() => setShowPassword(!showPassword)}
+          >
+            <Text style={styles.eyeIconText}>{showPassword ? '👁️' : '👁️'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderStep1 = () => (
+    <View style={styles.formContainer}>
+      <Text style={styles.title}>Account Setup</Text>
+
+      {/* Name Field */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Name</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="What's your full name"
+          placeholderTextColor="#999"
+          value={fullName}
+          onChangeText={setFullName}
+          autoCapitalize="words"
+          editable={!isLoading}
+        />
+      </View>
+
+      {/* Email Field */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Email</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="What's your email address"
+          placeholderTextColor="#999"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!isLoading}
+        />
+      </View>
+
+      {/* Password Field */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Password</Text>
+        <View style={styles.passwordContainer}>
+          <TextInput
+            style={[styles.input, styles.passwordInput]}
+            placeholder="Create a password for your account"
+            placeholderTextColor="#999"
+            secureTextEntry={!showPassword}
+            value={password}
+            onChangeText={setPassword}
+            editable={!isLoading}
+          />
+          <TouchableOpacity
+            style={styles.eyeIcon}
+            onPress={() => setShowPassword(!showPassword)}
+          >
+            <Text style={styles.eyeIconText}>{showPassword ? '👁️' : '👁️'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Verify Password Field */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Verify Password</Text>
+        <View style={styles.passwordContainer}>
+          <TextInput
+            style={[styles.input, styles.passwordInput]}
+            placeholder="Re-enter your password"
+            placeholderTextColor="#999"
+            secureTextEntry={!showVerifyPassword}
+            value={verifyPassword}
+            onChangeText={setVerifyPassword}
+            editable={!isLoading}
+          />
+          <TouchableOpacity
+            style={styles.eyeIcon}
+            onPress={() => setShowVerifyPassword(!showVerifyPassword)}
+          >
+            <Text style={styles.eyeIconText}>{showVerifyPassword ? '👁️' : '👁️'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderStep2 = () => (
+    <View style={styles.formContainer}>
+      <Text style={styles.title}>Additional Information</Text>
+
+      {/* Date of Birth Field */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Date of Birth</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor="#999"
+          value={dateOfBirth}
+          onChangeText={setDateOfBirth}
+          editable={!isLoading}
+        />
+      </View>
+
+      {/* Gender Field */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Gender</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Male/Female/Other"
+          placeholderTextColor="#999"
+          value={gender}
+          onChangeText={setGender}
+          editable={!isLoading}
+        />
+      </View>
+    </View>
+  );
+
+  const renderStep3 = () => (
+    <View style={styles.formContainer}>
+      <Text style={styles.title}>Review Information</Text>
+      
+      <View style={styles.reviewContainer}>
+        <View style={styles.reviewItem}>
+          <Text style={styles.reviewLabel}>Name:</Text>
+          <Text style={styles.reviewValue}>{fullName}</Text>
+        </View>
+        
+        <View style={styles.reviewItem}>
+          <Text style={styles.reviewLabel}>Email:</Text>
+          <Text style={styles.reviewValue}>{email}</Text>
+        </View>
+        
+        <View style={styles.reviewItem}>
+          <Text style={styles.reviewLabel}>Date of Birth:</Text>
+          <Text style={styles.reviewValue}>{dateOfBirth}</Text>
+        </View>
+        
+        <View style={styles.reviewItem}>
+          <Text style={styles.reviewLabel}>Gender:</Text>
+          <Text style={styles.reviewValue}>{gender}</Text>
+        </View>
+      </View>
+
+      <Text style={styles.reviewNote}>
+        Please review your information before completing signup
+      </Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.dogEmoji}>🐾</Text>
-          <Text style={styles.title}>Join DogApp</Text>
-          <Text style={styles.subtitle}>Create your account to get started</Text>
-        </View>
-        
-        <View style={styles.formContainer}>
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>👤 Full Name *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your full name"
-              placeholderTextColor="#A0A0A0"
-              value={fullName}
-              onChangeText={setFullName}
-              autoCapitalize="words"
-              autoCorrect={false}
-              autoComplete="name"
-            />
-          </View>
+      <StatusBar barStyle="dark-content" />
+      
+      {/* Progress Indicator */}
+      {isSignupMode && renderProgressIndicator()}
 
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>📧 Email Address *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email"
-              placeholderTextColor="#A0A0A0"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="email"
-            />
-          </View>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Render current step */}
+        {isSignupMode ? (
+          <>
+            {currentStep === 1 && renderStep1()}
+            {currentStep === 2 && renderStep2()}
+            {currentStep === 3 && renderStep3()}
+          </>
+        ) : (
+          renderLoginForm()
+        )}
 
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>🎂 Date of Birth * (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="1990-01-15"
-              placeholderTextColor="#A0A0A0"
-              value={dateOfBirth}
-              onChangeText={handleDateChange}
-              keyboardType={Platform.OS === 'web' ? 'default' : 'numeric'}
-              maxLength={10}
-              autoCorrect={false}
-            />
-            <Text style={styles.helperText}>Format: Year-Month-Day (e.g., 1990-01-15)</Text>
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>⚧ Gender *</Text>
-            <View style={styles.genderContainer}>
-              <TouchableOpacity 
-                style={[styles.genderButton, gender === 'male' && styles.selectedGender]}
-                onPress={() => setGender('male')}
-              >
-                <Text style={[styles.genderText, gender === 'male' && styles.selectedGenderText]}>👨 Male</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.genderButton, gender === 'female' && styles.selectedGender]}
-                onPress={() => setGender('female')}
-              >
-                <Text style={[styles.genderText, gender === 'female' && styles.selectedGenderText]}>👩 Female</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.genderButton, gender === 'other' && styles.selectedGender]}
-                onPress={() => setGender('other')}
-              >
-                <Text style={[styles.genderText, gender === 'other' && styles.selectedGenderText]}>🏳️‍⚧️ Other</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>🔒 Password *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Create a password (min 6 characters)"
-              placeholderTextColor="#A0A0A0"
-              secureTextEntry={true}
-              value={password}
-              onChangeText={setPassword}
-              autoComplete="password-new"
-              autoCorrect={false}
-              autoCapitalize="none"
-              textContentType="newPassword"
-              returnKeyType="next"
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>🔒 Confirm Password *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Confirm your password"
-              placeholderTextColor="#A0A0A0"
-              secureTextEntry={true}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              autoComplete="password-new"
-              autoCorrect={false}
-              autoCapitalize="none"
-              textContentType="newPassword"
-              returnKeyType="done"
-            />
-          </View>
-          
-          <TouchableOpacity 
-            style={[styles.signupButton, isLoading && styles.disabledButton]} 
-            onPress={handleSignUp}
+        {/* Navigation Buttons */}
+        <View style={styles.navigationContainer}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBack}
             disabled={isLoading}
+            activeOpacity={0.7}
           >
-            <Text style={styles.signupButtonText}>
-              {isLoading ? '🐾 Creating Account...' : '🐾 Create Account'}
-            </Text>
+            <Text style={styles.backButtonText}>Back</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.backToLoginButton} 
-            onPress={() => navigation.navigate('Login')}
+
+          <TouchableOpacity
+            style={[styles.nextButton, isLoading && styles.disabledButton]}
+            onPress={handleNext}
             disabled={isLoading}
+            activeOpacity={0.7}
           >
-            <Text style={styles.backToLoginText}>
-              Already have an account? Sign In 🏠
+            <Text style={styles.nextButtonText}>
+              {isLoading ? 'Please wait...' : isSignupMode && currentStep === totalSteps ? 'Finish' : 'Next'}
             </Text>
           </TouchableOpacity>
         </View>
-        
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>* Required fields</Text>
-          <Text style={styles.footerText}>By signing up, you agree to our Terms & Privacy Policy</Text>
-        </View>
+
+        {/* Forgot Password Button - Only show in login mode */}
+        {!isSignupMode && (
+          <View style={styles.forgotPasswordButtonContainer}>
+            <TouchableOpacity
+              style={styles.forgotPasswordButton}
+              onPress={() => showError('Password reset feature coming soon!')}
+              disabled={isLoading}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.forgotPasswordButtonText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
+
+      {/* Sign In Link - Fixed at bottom */}
+      <View style={styles.signInContainer}>
+        <Text style={styles.signInText}>
+          {isSignupMode ? 'Already have an account? ' : "Don't have an account? "}
+        </Text>
+        <TouchableOpacity 
+          onPress={toggleMode}
+          disabled={isLoading}
+        >
+          <Text style={styles.signInLink}>
+            {isSignupMode ? 'Sign in here' : 'Sign up here'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <CustomAlert
         visible={alertState.visible}
@@ -279,146 +438,200 @@ export default function SignupScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FF6B6B',
+    backgroundColor: '#F5F5F5',
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingBottom: 10,
+    paddingHorizontal: 80,
+    gap: 12,
+  },
+  progressBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+  },
+  progressBarActive: {
+    backgroundColor: '#6B6B6B',
+  },
+  progressBarInactive: {
+    backgroundColor: '#D3D3D3',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    flexGrow: 1,
     paddingBottom: 40,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 30,
-    marginTop: 20,
-  },
-  dogEmoji: {
-    fontSize: 60,
-    marginBottom: 10,
+  formContainer: {
+    paddingHorizontal: 30,
+    paddingTop: 40,
   },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
+    color: '#6B6B6B',
+    marginBottom: 40,
   },
-  subtitle: {
+  inputGroup: {
+    marginBottom: 32,
+  },
+  label: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 12,
+  },
+  input: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     fontSize: 16,
-    color: '#FFE5E5',
+    color: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  passwordContainer: {
+    position: 'relative',
+  },
+  passwordInput: {
+    paddingRight: 50,
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: 15,
+    top: 12,
+    padding: 5,
+  },
+  eyeIconText: {
+    fontSize: 20,
+  },
+  reviewContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+  },
+  reviewItem: {
+    marginBottom: 16,
+  },
+  reviewLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  reviewValue: {
+    fontSize: 16,
+    color: '#1A1A1A',
+    fontWeight: '500',
+  },
+  reviewNote: {
+    fontSize: 14,
+    color: '#666',
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  formContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 20,
-    padding: 25,
-    marginHorizontal: 10,
+  navigationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 30,
+    marginTop: 60,
+    gap: 16,
+  },
+  backButton: {
+    flex: 1,
+    backgroundColor: '#D3D3D3',
+    borderRadius: 12,
+    paddingVertical: 18,
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 16,
+  backButtonText: {
+    fontSize: 20,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    color: '#1A1A1A',
   },
-  input: {
-    backgroundColor: '#F8F9FA',
-    borderWidth: 2,
-    borderColor: '#E9ECEF',
+  nextButton: {
+    flex: 1,
+    backgroundColor: '#D3D3D3',
     borderRadius: 12,
-    padding: 15,
-    fontSize: 16,
-    color: '#333',
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-    fontStyle: 'italic',
-  },
-  signupButton: {
-    backgroundColor: '#4A90E2',
-    borderRadius: 12,
-    padding: 18,
+    paddingVertical: 18,
     alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#4A90E2',
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  signupButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  backToLoginButton: {
-    marginTop: 15,
-    padding: 12,
-    alignItems: 'center',
-  },
-  backToLoginText: {
-    color: '#FF6B6B',
-    fontSize: 16,
+  nextButtonText: {
+    fontSize: 20,
     fontWeight: '600',
-    textAlign: 'center',
-  },
-  footer: {
-    alignItems: 'center',
-    marginTop: 30,
-  },
-  footerText: {
-    color: '#FFE5E5',
-    fontSize: 12,
-    textAlign: 'center',
-    fontStyle: 'italic',
+    color: '#1A1A1A',
   },
   disabledButton: {
     opacity: 0.6,
   },
-  genderContainer: {
+  signInContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  genderButton: {
-    flex: 1,
-    backgroundColor: '#F8F9FA',
-    borderWidth: 2,
-    borderColor: '#E9ECEF',
-    borderRadius: 12,
-    padding: 12,
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 20,
+    backgroundColor: '#F5F5F5',
   },
-  selectedGender: {
-    backgroundColor: '#4A90E2',
-    borderColor: '#4A90E2',
+  signInText: {
+    fontSize: 16,
+    color: '#1A1A1A',
   },
-  genderText: {
-    fontSize: 14,
+  signInLink: {
+    fontSize: 16,
+    color: '#007BFF',
     fontWeight: '600',
-    color: '#333',
   },
-  selectedGenderText: {
-    color: '#FFFFFF',
+  forgotPasswordContainer: {
+    alignItems: 'flex-end',
+    marginTop: 10,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    color: '#007BFF',
+  },
+  forgotPasswordButtonContainer: {
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  forgotPasswordButton: {
+    backgroundColor: '#D3D3D3',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  forgotPasswordButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
   },
 });
