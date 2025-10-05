@@ -99,3 +99,5 @@ yarn-error.*
 
 
 .vercel
+
+frontend/dogapp/firebase.js
