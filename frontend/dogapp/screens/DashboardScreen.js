@@ -1,4 +1,4 @@
-import React, { memo, useState, useEffect, useRef, useCallback } from 'react';
+import React, { memo, useState, useEffect, useRef, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,41 +8,38 @@ import {
   TouchableOpacity,
   Dimensions,
   Platform,
-  Animated
-} from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { useAuth } from '../contexts/AuthContext';
-import DogService from '../services/DogService';
-import CustomAlert, { DogImage } from '../components/CustomAlert';
-import { useAlerts } from '../components/useCustomAlert';
+  Animated,
+} from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
+import { useAuth } from "../contexts/AuthContext";
+import DogService from "../services/DogService";
+import CustomAlert, { DogImage } from "../components/CustomAlert";
+import { useAlerts } from "../components/useCustomAlert";
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
-// Memoized DogCard to avoid re-render on parent state changes
-const DogCard = memo(({ dog, onPressProfile, onPressEdit, onPressDelete }) => (
-  <TouchableOpacity style={styles.dogCard} onPress={() => onPressProfile(dog)}>
-    <View style={styles.dogHeader}>
-      {dog.photo_url ? (
-        <DogImage 
-          source={{ uri: dog.photo_url }} 
-          style={styles.dogPhoto} 
-          placeholder={dog.emoji || '🐕'} 
-        />
-      ) : (
-        <Text style={styles.dogEmoji}>{dog.emoji || '🐕'}</Text>
-      )}
-      <View style={styles.dogInfo}>
-        <Text style={styles.dogName}>{dog.name}</Text>
-        <Text style={styles.dogBreed}>{dog.breed}</Text>
-        <Text style={styles.dogAge}>{dog.age} years old</Text>
-      </View>
+// Memoized DogCard with friends-style row layout (avatar, name, button on right)
+const DogCard = memo(({ dog, onPressProfile, onPressFriends }) => (
+  <TouchableOpacity
+    style={styles.friendRow}
+    onPress={() => onPressProfile(dog)}
+    activeOpacity={0.8}
+  >
+    <DogImage
+      source={{ uri: dog.photo_url }}
+      style={styles.friendAvatar}
+      placeholder={dog.emoji || "🐕"}
+    />
+    <View style={styles.friendInfo}>
+      <Text style={styles.friendName}>{dog.name}</Text>
+      <Text style={styles.friendSub}>{dog.breed || "Your dog"}</Text>
     </View>
-    <View style={styles.cardActions}>
-      <TouchableOpacity style={styles.editButton} onPress={() => onPressEdit(dog)}>
-        <Text style={styles.editButtonText}>✏️ Edit</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.deleteButton} onPress={() => onPressDelete(dog.id)}>
-        <Text style={styles.deleteButtonText}>🗑️ Delete</Text>
+    <View style={styles.friendActions}>
+      <TouchableOpacity
+        style={styles.friendBtn}
+        onPress={() => onPressFriends(dog)}
+      >
+        <Text style={styles.friendBtnText}>Bark Crew</Text>
       </TouchableOpacity>
     </View>
   </TouchableOpacity>
@@ -54,8 +51,12 @@ export default function DashboardScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [showMainMenu, setShowMainMenu] = useState(false);
   const menuAnim = useRef(new Animated.Value(0)).current;
-  const { alertState, hideAlert, showError, showSuccess, showInfo } = useAlerts();
-  const [confirmDelete, setConfirmDelete] = useState({ visible: false, dogId: null });
+  const { alertState, hideAlert, showError, showSuccess, showInfo } =
+    useAlerts();
+  const [confirmDelete, setConfirmDelete] = useState({
+    visible: false,
+    dogId: null,
+  });
   const [confirmLogout, setConfirmLogout] = useState(false);
 
   // Reload dogs when screen comes into focus (when returning from other screens)
@@ -72,35 +73,43 @@ export default function DashboardScreen({ navigation }) {
   const loadDogs = async () => {
     try {
       setLoading(true);
-      console.log('🔄 Loading dogs from API...');
+      console.log("🔄 Loading dogs from API...");
       const result = await DogService.getDogs();
-      
+
       if (result.success) {
-        console.log('✅ Dogs loaded successfully:', result.dogs.length, 'dogs found');
-        
+        console.log(
+          "✅ Dogs loaded successfully:",
+          result.dogs.length,
+          "dogs found"
+        );
+
         // Log photo URLs for each dog
         result.dogs.forEach((dog, index) => {
           console.log(`🐕 Dog ${index + 1}: ${dog.name}`);
-          console.log(`   - Photo URL: ${dog.photo_url || 'No photo'}`);
-          console.log(`   - Has photo_url field: ${dog.photo_url !== undefined}`);
-          console.log(`   - Photo URL length: ${dog.photo_url ? dog.photo_url.length : 0}`);
+          console.log(`   - Photo URL: ${dog.photo_url || "No photo"}`);
+          console.log(
+            `   - Has photo_url field: ${dog.photo_url !== undefined}`
+          );
+          console.log(
+            `   - Photo URL length: ${dog.photo_url ? dog.photo_url.length : 0}`
+          );
         });
-        
+
         setDogs(result.dogs);
       } else {
-        console.error('❌ Failed to load dogs:', result.error);
-        showError(result.error || 'Failed to load dogs');
+        console.error("❌ Failed to load dogs:", result.error);
+        showError(result.error || "Failed to load dogs");
       }
     } catch (error) {
-      console.error('💥 Error loading dogs:', error);
-      showError('Failed to load dogs. Please try again.');
+      console.error("💥 Error loading dogs:", error);
+      showError("Failed to load dogs. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const deleteDog = async (dogId) => {
-    if (Platform.OS === 'web') {
+    if (Platform.OS === "web") {
       // Web: use custom alert instead of window.confirm/alert
       setConfirmDelete({ visible: true, dogId });
     } else {
@@ -112,18 +121,18 @@ export default function DashboardScreen({ navigation }) {
   const confirmDeleteDog = async () => {
     const dogId = confirmDelete.dogId;
     setConfirmDelete({ visible: false, dogId: null });
-    
+
     try {
       const result = await DogService.deleteDog(dogId);
       if (result.success) {
-        setDogs(dogs.filter(dog => dog.id !== dogId));
-        showSuccess('Dog profile deleted successfully');
+        setDogs(dogs.filter((dog) => dog.id !== dogId));
+        showSuccess("Dog profile deleted successfully");
       } else {
-        showError(result.error || 'Failed to delete dog');
+        showError(result.error || "Failed to delete dog");
       }
     } catch (error) {
-      console.error('Error deleting dog:', error);
-      showError('Failed to delete dog. Please try again.');
+      console.error("Error deleting dog:", error);
+      showError("Failed to delete dog. Please try again.");
     }
   };
 
@@ -134,12 +143,12 @@ export default function DashboardScreen({ navigation }) {
         closeMenu();
         await logout();
       } catch (error) {
-        console.error('Logout error:', error);
-        showError('Failed to logout. Please try again.');
+        console.error("Logout error:", error);
+        showError("Failed to logout. Please try again.");
       }
     };
 
-    if (Platform.OS === 'web') {
+    if (Platform.OS === "web") {
       // On web, we log out directly to avoid issues with the Alert component
       // and provide a quicker user experience.
       performLogout();
@@ -155,24 +164,30 @@ export default function DashboardScreen({ navigation }) {
       closeMenu();
       await logout();
     } catch (error) {
-      console.error('Logout error:', error);
-      showError('Failed to logout. Please try again.');
+      console.error("Logout error:", error);
+      showError("Failed to logout. Please try again.");
     }
   };
 
   // Stable callbacks to prevent re-creation on each render
   const handleNavigateProfile = useCallback(
-    (dog) => navigation.navigate('DogProfile', { dog }),
+    (dog) => navigation.navigate("DogProfile", { dog }),
     [navigation]
   );
-  const handleNavigateEdit = useCallback(
-    (dog) => navigation.navigate('EditDog', { dog }),
+
+  const handleNavigateFriends = useCallback(
+    (dog) => navigation.navigate("DogFriends", { dog }),
     [navigation]
   );
-  const handleDelete = useCallback(
-    (id) => deleteDog(id),
-    [deleteDog]
-  );
+
+  // Helper to open Friends for primary dog
+  const openFriends = useCallback(() => {
+    if (dogs && dogs.length > 0) {
+      navigation.navigate("DogFriends", { dog: dogs[0] });
+    } else {
+      showInfo("Add a dog first to see friends");
+    }
+  }, [dogs, navigation, showInfo]);
 
   // Animates menu closing then hides
   const closeMenu = useCallback(() => {
@@ -197,158 +212,99 @@ export default function DashboardScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <TouchableOpacity
-              style={styles.notificationButton}
-              onPress={() => navigation.navigate('Notifications')}
-            >
-              <Text style={styles.notificationText}>🔔</Text>
-            </TouchableOpacity>
-            
-            <View style={styles.headerCenter}>
-              <Text style={styles.welcomeText}>Manage Your Dogs🐶</Text>
-            </View>
-            
-            <TouchableOpacity
-              style={styles.menuButton}
-              onPress={() => {
-                if (showMainMenu) closeMenu();
-                else setShowMainMenu(true);
-              }}
-            >
-              <Text style={styles.menuText}>☰</Text>
-            </TouchableOpacity>
-          </View>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Simple top bar with back arrow */}
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Map")}
+            style={styles.backBtn}
+          >
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
         </View>
 
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>🐕 Loading your pack...</Text>
+        {/* Featured Dog Section */}
+        {!loading && dogs.length > 0 && (
+          <View style={styles.featuredSection}>
+            <Text style={styles.featuredTitle}>{dogs[0].name}'s Friends</Text>
+            <TouchableOpacity
+              style={styles.featuredDogContainer}
+              onPress={() => handleNavigateProfile(dogs[0])}
+              activeOpacity={0.8}
+            >
+              <DogImage
+                source={{ uri: dogs[0].photo_url }}
+                style={styles.featuredDogImage}
+                placeholder={dogs[0].emoji || "🐕"}
+              />
+            </TouchableOpacity>
           </View>
-        ) : dogs.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>🐕‍🦺</Text>
-            <Text style={styles.emptyTitle}>No Dogs Yet</Text>
-            <Text style={styles.emptyText}>
-              Add your first furry friend to get started!
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.dogsContainer}>
+        )}
+
+        {/* My Dogs Section */}
+        {!loading && (
+          <View style={styles.myDogsSection}>
+            <Text style={styles.sectionTitle}>My Dogs</Text>
             {dogs.map((dog) => (
               <DogCard
                 key={dog.id}
                 dog={dog}
                 onPressProfile={handleNavigateProfile}
-                onPressEdit={handleNavigateEdit}
-                onPressDelete={handleDelete}
+                onPressFriends={handleNavigateFriends}
               />
             ))}
+
+            {/* Add New Dog Button */}
+            <TouchableOpacity
+              style={styles.addNewDogButton}
+              onPress={() => navigation.navigate("AddDog")}
+            >
+              <Text style={styles.addNewDogIcon}>+</Text>
+              <Text style={styles.addNewDogText}>Add New Dog</Text>
+            </TouchableOpacity>
           </View>
         )}
+
+        <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* Main Menu Overlay */}
-      {showMainMenu && (
-        <View style={styles.menuOverlay}>
-          <TouchableOpacity
-            style={styles.overlayBackground}
-            onPress={closeMenu}
-          />
-          <Animated.View
-            style={[
-              styles.mainMenu,
-              {
-                opacity: menuAnim,
-                transform: [
-                  {
-                    translateY: menuAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [20, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.menuHeader}>
-              <Text style={styles.menuTitle}>🐕 Main Menu</Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={closeMenu}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setShowMainMenu(false);
-                navigation.navigate('AddDog');
-              }}
-            >
-              <Text style={styles.menuItemEmoji}>🐾</Text>
-              <Text style={styles.menuItemText}>Add New Dog</Text>
-            </TouchableOpacity>
-            
-            {dogs.length > 0 && (
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  setShowMainMenu(false);
-                  navigation.navigate('DogProfile', { dog: dogs[0] });
-                }}
-              >
-                <Text style={styles.menuItemEmoji}>👁️</Text>
-                <Text style={styles.menuItemText}>View Recent Dog</Text>
-              </TouchableOpacity>
-            )}
-            
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setShowMainMenu(false);
-                loadDogs();
-              }}
-            >
-              <Text style={styles.menuItemEmoji}>🔄</Text>
-              <Text style={styles.menuItemText}>Refresh Data</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                closeMenu();
-                navigation.navigate('DogParks');
-              }}
-            >
-              <Text style={styles.menuItemEmoji}>🏞️</Text>
-              <Text style={styles.menuItemText}>Find Dog Parks</Text>
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-            
-            <TouchableOpacity
-              style={[styles.menuItem, styles.logoutMenuItem]}
-              onPress={handleLogout}
-            >
-              <Text style={styles.menuItemEmoji}>🚪</Text>
-              <Text style={[styles.menuItemText, styles.logoutText]}>Logout</Text>
-            </TouchableOpacity>
-          </Animated.View>
-         </View>
-       )}
-
-      {/* Main Add Button */}
-      <View style={styles.fabContainer}>
+      {/* Bottom navigation bar matching mock: Home, Account, Map, Friends, Chats */}
+      <View style={styles.navigationBar}>
         <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('AddDog')}
+          style={[styles.navButton, styles.navButtonActive]}
+          onPress={() => navigation.navigate("Dashboard")}
         >
-          <Text style={styles.addButtonText}>+ Add New Dog</Text>
+          <Text style={styles.navIcon}>🏠</Text>
+          <Text style={[styles.navLabel, styles.navLabelActive]}>Home</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navButton} onPress={() => logout()}>
+          <Text style={styles.navIcon}>👤</Text>
+          <Text style={styles.navLabel}>Account</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navButton}
+          onPress={() => navigation.navigate("Map")}
+        >
+          <Text style={styles.navIcon}>📍</Text>
+          <Text style={styles.navLabel}>Map</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navButton} onPress={openFriends}>
+          <Text style={styles.navIcon}>👥</Text>
+          <Text style={styles.navLabel}>Friends</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navButton}
+          onPress={() => navigation.navigate("Notifications")}
+        >
+          <Text style={styles.navIcon}>💬</Text>
+          <Text style={styles.navLabel}>Chats</Text>
         </TouchableOpacity>
       </View>
 
@@ -391,276 +347,169 @@ export default function DashboardScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: "#F8F9FA",
   },
   scrollView: {
     flex: 1,
   },
-  header: {
-    backgroundColor: '#4A90E2',
-    padding: 20,
-    alignItems: 'center',
+  topBar: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+    backgroundColor: "#FFFFFF",
   },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
+  backBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 18,
   },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
+  backIcon: {
+    fontSize: 28,
+    color: "#222",
+    lineHeight: 28,
   },
-  welcomeText: {
-    fontSize: 30,
-    fontWeight: 'bold',
-    color: 'black',
-    textAlign: 'center',
-    marginBottom: 0,
+  featuredSection: {
+    paddingHorizontal: 20,
+    paddingTop: 6,
+    paddingBottom: 12,
+    alignItems: "flex-start",
+    backgroundColor: "#FFFFFF",
   },
-  subText: {
-    fontSize: 16,
-    color: '#E8F4FD',
-    textAlign: 'left',
+  featuredTitle: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#333",
+    marginBottom: 16,
   },
-  menuButton: {
-    backgroundColor: 'transparent',
-    padding: 10,
+  featuredDogContainer: {
+    width: "100%",
+    alignItems: "center",
   },
-  menuText: {
-    color: '#FFFFFF',
-    fontSize: 24,
+  featuredDogImage: {
+    width: 220,
+    height: 220,
+    borderRadius: 110,
   },
-  notificationButton: {
-    backgroundColor: 'transparent',
-    padding: 10,
-    marginLeft: 10,
+  myDogsSection: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
   },
-  notificationText: {
-    color: '#FFFFFF',
-    fontSize: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-    marginTop: 60,
-  },
-  loadingText: {
+  sectionTitle: {
     fontSize: 18,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 24,
+    fontWeight: "700",
+    color: "#4A4A4A",
+    marginBottom: 12,
   },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-    marginTop: 60,
-  },
-  emptyEmoji: {
-    fontSize: 80,
-    marginBottom: 20,
-  },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  dogsContainer: {
-    padding: 15,
-  },
-  dogCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
+  friendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
-  dogHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
+  friendAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    marginRight: 12,
   },
-  dogEmoji: {
-    fontSize: 50,
-    marginRight: 15,
-  },
-  dogPhoto: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 15,
-  },
-  dogInfo: {
+  friendInfo: {
     flex: 1,
   },
-  dogName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#333',
+  friendName: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333",
+  },
+  friendSub: {
+    fontSize: 14,
+    color: "#9AA0A6",
+    marginTop: 2,
+  },
+  friendActions: {
+    width: 120,
+    alignItems: "stretch",
+    justifyContent: "center",
+  },
+  friendBtn: {
+    backgroundColor: "#5B8C5A",
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  friendBtnSecondary: {
+    opacity: 0.95,
+  },
+  friendBtnText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  addNewDogButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginTop: 12,
+    borderWidth: 2,
+    borderColor: "#5B8C5A",
+    borderStyle: "dashed",
+  },
+  addNewDogIcon: {
+    fontSize: 24,
+    color: "#5B8C5A",
+    fontWeight: "bold",
+    marginRight: 8,
+  },
+  addNewDogText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#5B8C5A",
+  },
+  bottomPadding: {
+    height: 100,
+  },
+  navigationBar: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#E0E0E0",
+    paddingBottom: Platform.OS === "ios" ? 24 : 12,
+  },
+  navButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  navButtonActive: {
+    borderBottomWidth: 3,
+    borderBottomColor: "#6B6B6B",
+  },
+  navIcon: {
+    fontSize: 24,
     marginBottom: 4,
   },
-  dogBreed: {
-    fontSize: 16,
-    color: '#4A90E2',
-    marginBottom: 2,
+  navLabel: {
+    fontSize: 12,
+    color: "#999",
+    fontWeight: "500",
   },
-  dogAge: {
-    fontSize: 14,
-    color: '#666',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  editButton: {
-    backgroundColor: '#4A90E2',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    flex: 0.45,
-  },
-  editButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  deleteButton: {
-    backgroundColor: '#FF6B6B',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    flex: 0.45,
-  },
-  deleteButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  fabContainer: {
-    position: 'relative',
-    padding: 20,
-  },
-  addButton: {
-    backgroundColor: '#FF6B6B',
-    padding: 18,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 15,
-    shadowColor: '#FF6B6B',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  menuOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-  },
-  overlayBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-  },
-  mainMenu: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 15,
-    padding: 25,
-    width: '85%',
-    maxWidth: 300,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  menuHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  menuTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  closeButton: {
-    backgroundColor: 'transparent',
-    padding: 5,
-  },
-  closeButtonText: {
-    fontSize: 18,
-    color: '#FF6B6B',
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    width: '100%',
-    marginBottom: 10,
-    backgroundColor: '#F8F9FA',
-    borderWidth: 1,
-    borderColor: '#E9ECEF',
-  },
-  menuItemEmoji: {
-    fontSize: 24,
-    marginRight: 15,
-  },
-  menuItemText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: '#E9ECEF',
-    marginVertical: 10,
-  },
-  logoutMenuItem: {
-    backgroundColor: '#FF6B6B',
-  },
-  logoutText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
+  navLabelActive: {
+    color: "#333",
+    fontWeight: "600",
   },
 });

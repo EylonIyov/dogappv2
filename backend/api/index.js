@@ -1,69 +1,75 @@
-const express = require('express');
-const cors = require('cors');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const multer = require('multer');
-const { v4: uuidv4 } = require('uuid');
+const express = require("express");
+const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+const multer = require("multer");
+const { v4: uuidv4 } = require("uuid");
 
 // Import Firebase and S3 configurations
-const { db, serverTimestamp } = require('../firebase-config');
-const { uploadToS3, validateImageFile } = require('../dogUploadPicture');
+const { db, serverTimestamp } = require("../firebase-config");
+const {
+  uploadToS3,
+  validateImageFile,
+  getSignedUrlForKey,
+} = require("../dogUploadPicture");
 
 const app = express();
 
 // Firestore collections
-const usersCollection = db.collection('test_users');
-const dogsCollection = db.collection('dogs');
-const dogParksCollection = db.collection('test_dogparks');
-const friendRequestsCollection = db.collection('friend-requests');
-const notificationsCollection = db.collection('notifications');
+const usersCollection = db.collection("test_users");
+const dogsCollection = db.collection("dogs");
+const dogParksCollection = db.collection("test_dogparks");
+const friendRequestsCollection = db.collection("friend-requests");
+const notificationsCollection = db.collection("notifications");
 
 // CORS configuration
-app.use(cors({
-  origin: [
-    'https://dogapp-frontend.vercel.app', // Update this to your actual frontend Vercel URL
-    'http://localhost:3000',
-    'https://localhost:3000'
-  ],
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: [
+      "https://dogapp-frontend.vercel.app", // Update this to your actual frontend Vercel URL
+      "http://localhost:3000",
+      "https://localhost:3000",
+    ],
+    credentials: true,
+  })
+);
 
 // Middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Configure multer for memory storage (serverless compatible)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only JPEG, PNG, and GIF images are allowed'), false);
+      cb(new Error("Only JPEG, PNG, and GIF images are allowed"), false);
     }
-  }
+  },
 });
 
 // JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
 // Middleware to authenticate JWT tokens
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
+    return res.status(401).json({ error: "Access token required" });
   }
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
-      console.log('JWT verification failed:', err.message);
-      return res.status(403).json({ error: 'Invalid or expired token' });
+      console.log("JWT verification failed:", err.message);
+      return res.status(403).json({ error: "Invalid or expired token" });
     }
     req.user = user;
     next();
@@ -73,49 +79,87 @@ const authenticateToken = (req, res, next) => {
 // Helper functions
 const formatAge = (age) => {
   if (!age) return 0;
-  const parsedAge = typeof age === 'string' ? parseFloat(age) : age;
+  const parsedAge = typeof age === "string" ? parseFloat(age) : age;
   if (isNaN(parsedAge)) return 0;
   return Math.max(0, Math.min(30, parsedAge));
 };
 
+// Helper to extract S3 key from a presigned URL if possible
+function extractS3KeyFromUrl(url) {
+  try {
+    if (!url || typeof url !== "string" || url.trim() === "") {
+      console.log("⚠️ extractS3KeyFromUrl: Empty or invalid URL provided");
+      return null;
+    }
+
+    // Clean the URL
+    const cleanUrl = url.trim();
+
+    const u = new URL(cleanUrl);
+    if (u.hostname.includes("amazonaws.com") || u.hostname.includes("s3")) {
+      // Path-style URL: /DogPictures/... (strip leading slash)
+      const path = u.pathname.startsWith("/")
+        ? u.pathname.slice(1)
+        : u.pathname;
+
+      // Ignore empty path or root path
+      if (
+        path &&
+        !path.endsWith("/") &&
+        path !== "DogPictures" &&
+        path !== "DogPictures/"
+      ) {
+        const decodedPath = decodeURIComponent(path);
+        console.log(`✅ Extracted S3 key from URL: ${decodedPath}`);
+        return decodedPath;
+      }
+    }
+    console.log("⚠️ extractS3KeyFromUrl: Could not extract valid key from URL");
+    return null;
+  } catch (error) {
+    console.log("⚠️ extractS3KeyFromUrl: Error parsing URL:", error.message);
+    return null;
+  }
+}
+
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get("/health", (req, res) => {
   res.status(200).json({
-    status: 'OK',
-    message: 'Dog App API is running on Vercel',
+    status: "OK",
+    message: "Dog App API is running on Vercel",
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
 // Debug Firebase connection endpoint
-app.get('/debug/firebase', async (req, res) => {
+app.get("/debug/firebase", async (req, res) => {
   try {
-    console.log('🔍 Testing Firebase connection...');
-    
+    console.log("🔍 Testing Firebase connection...");
+
     // Test basic Firestore read operation
-    const testDoc = await db.collection('test').doc('connection-test').get();
-    console.log('✅ Firebase connection successful');
-    
-    res.json({ 
-      success: true, 
-      message: 'Firebase connection working',
+    const testDoc = await db.collection("test").doc("connection-test").get();
+    console.log("✅ Firebase connection successful");
+
+    res.json({
+      success: true,
+      message: "Firebase connection working",
       timestamp: new Date().toISOString(),
-      hasDocument: testDoc.exists
+      hasDocument: testDoc.exists,
     });
   } catch (error) {
-    console.error('❌ Firebase connection failed:', error.message);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Firebase connection failed',
+    console.error("❌ Firebase connection failed:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Firebase connection failed",
       details: error.message,
-      code: error.code || 'UNKNOWN_ERROR'
+      code: error.code || "UNKNOWN_ERROR",
     });
   }
 });
 
 // Debug environment variables endpoint
-app.get('/debug/env', (req, res) => {
+app.get("/debug/env", (req, res) => {
   const firebaseVars = {
     hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
     hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
@@ -124,104 +168,111 @@ app.get('/debug/env', (req, res) => {
     hasPrivateKeyId: !!process.env.FIREBASE_PRIVATE_KEY_ID,
     hasCertUrl: !!process.env.FIREBASE_CLIENT_X509_CERT_URL,
     nodeEnv: process.env.NODE_ENV,
-    projectId: process.env.FIREBASE_PROJECT_ID ? 'SET' : 'NOT SET'
+    projectId: process.env.FIREBASE_PROJECT_ID ? "SET" : "NOT SET",
   };
-  
+
   res.json({
     success: true,
     firebase: firebaseVars,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
 // Test user creation and authentication endpoint
-app.post('/debug/test-auth', async (req, res) => {
+app.post("/debug/test-auth", async (req, res) => {
   try {
-    const testEmail = 'test@dogapp.com';
-    const testPassword = 'testpassword123';
-    const testName = 'Test User';
-    
-    console.log('🧪 Testing user authentication flow...');
-    
+    const testEmail = "test@dogapp.com";
+    const testPassword = "testpassword123";
+    const testName = "Test User";
+
+    console.log("🧪 Testing user authentication flow...");
+
     // Step 1: Check if test user already exists and delete if found
-    console.log('📋 Step 1: Checking for existing test user...');
-    const existingUserQuery = await usersCollection.where('email', '==', testEmail).get();
-    
+    console.log("📋 Step 1: Checking for existing test user...");
+    const existingUserQuery = await usersCollection
+      .where("email", "==", testEmail)
+      .get();
+
     if (!existingUserQuery.empty) {
-      console.log('🗑️ Found existing test user, deleting...');
+      console.log("🗑️ Found existing test user, deleting...");
       const batch = db.batch();
-      existingUserQuery.docs.forEach(doc => {
+      existingUserQuery.docs.forEach((doc) => {
         batch.delete(doc.ref);
       });
       await batch.commit();
-      console.log('✅ Existing test user deleted');
+      console.log("✅ Existing test user deleted");
     }
-    
+
     // Step 2: Create test user with hashed password
-    console.log('👤 Step 2: Creating test user...');
+    console.log("👤 Step 2: Creating test user...");
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(testPassword, saltRounds);
-    
+
     const userDoc = await usersCollection.add({
       email: testEmail,
       password: hashedPassword,
       name: testName,
-      created_at: serverTimestamp()
+      created_at: serverTimestamp(),
     });
-    
-    console.log('✅ Test user created with ID:', userDoc.id);
-    
+
+    console.log("✅ Test user created with ID:", userDoc.id);
+
     // Step 3: Verify user was created correctly
-    console.log('🔍 Step 3: Verifying user creation...');
+    console.log("🔍 Step 3: Verifying user creation...");
     const createdUser = await userDoc.get();
     const createdUserData = createdUser.data();
-    
+
     if (!createdUser.exists) {
-      throw new Error('User document was not created');
+      throw new Error("User document was not created");
     }
-    
-    console.log('✅ User verification passed');
-    
+
+    console.log("✅ User verification passed");
+
     // Step 4: Test login with the created user
-    console.log('🔐 Step 4: Testing login...');
-    
+    console.log("🔐 Step 4: Testing login...");
+
     // Find user by email (simulating login process)
-    const userSnapshot = await usersCollection.where('email', '==', testEmail).get();
-    
+    const userSnapshot = await usersCollection
+      .where("email", "==", testEmail)
+      .get();
+
     if (userSnapshot.empty) {
-      throw new Error('User not found during login test');
+      throw new Error("User not found during login test");
     }
-    
+
     const userDocFromLogin = userSnapshot.docs[0];
     const userDataFromLogin = userDocFromLogin.data();
-    
+
     // Test password verification
-    const isPasswordValid = await bcrypt.compare(testPassword, userDataFromLogin.password);
-    
+    const isPasswordValid = await bcrypt.compare(
+      testPassword,
+      userDataFromLogin.password
+    );
+
     if (!isPasswordValid) {
-      throw new Error('Password verification failed');
+      throw new Error("Password verification failed");
     }
-    
-    console.log('✅ Password verification passed');
-    
+
+    console.log("✅ Password verification passed");
+
     // Generate JWT token
     const token = jwt.sign(
       { userId: userDocFromLogin.id, email: userDataFromLogin.email },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: "7d" }
     );
-    
-    console.log('✅ JWT token generated successfully');
-    
+
+    console.log("✅ JWT token generated successfully");
+
     // Step 5: Test token verification
-    console.log('🎫 Step 5: Testing token verification...');
-    
+    console.log("🎫 Step 5: Testing token verification...");
+
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log('✅ Token verification passed');
-    
+    console.log("✅ Token verification passed");
+
     res.json({
       success: true,
-      message: 'Authentication flow test completed successfully',
+      message: "Authentication flow test completed successfully",
       testResults: {
         userCreated: true,
         userFound: true,
@@ -232,19 +283,18 @@ app.post('/debug/test-auth', async (req, res) => {
         testCredentials: {
           email: testEmail,
           password: testPassword,
-          note: 'You can use these credentials to test login via /api/auth/login'
-        }
+          note: "You can use these credentials to test login via /api/auth/login",
+        },
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-    
   } catch (error) {
-    console.error('❌ Authentication test failed:', error);
+    console.error("❌ Authentication test failed:", error);
     res.status(500).json({
       success: false,
-      error: 'Authentication test failed',
+      error: "Authentication test failed",
       details: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
   }
 });
@@ -252,28 +302,30 @@ app.post('/debug/test-auth', async (req, res) => {
 // AUTHENTICATION ROUTES
 
 // Register endpoint
-app.post('/api/auth/register', async (req, res) => {
+app.post("/api/auth/register", async (req, res) => {
   try {
-    const { 
-      email, 
-      password, 
-      fullName, 
+    const {
+      email,
+      password,
+      fullName,
       name,
-      dateOfBirth, 
-      gender, 
-      profileImageUrl, 
-      preferences 
+      dateOfBirth,
+      gender,
+      profileImageUrl,
+      preferences,
     } = req.body;
 
     // Accept both 'name' and 'fullName' for backwards compatibility
     const userName = name || fullName;
 
     if (!email || !password || !userName) {
-      return res.status(400).json({ error: 'Email, password, and name are required' });
+      return res
+        .status(400)
+        .json({ error: "Email, password, and name are required" });
     }
 
-    console.log('📝 Registration attempt for:', email);
-    console.log('📋 Registration data received:', {
+    console.log("📝 Registration attempt for:", email);
+    console.log("📋 Registration data received:", {
       email,
       hasPassword: !!password,
       fullName,
@@ -282,14 +334,18 @@ app.post('/api/auth/register', async (req, res) => {
       dateOfBirth,
       gender,
       hasProfileImage: !!profileImageUrl,
-      hasPreferences: !!preferences
+      hasPreferences: !!preferences,
     });
 
     // Check if user already exists
-    const existingUser = await usersCollection.where('email', '==', email).get();
+    const existingUser = await usersCollection
+      .where("email", "==", email)
+      .get();
     if (!existingUser.empty) {
-      console.log('❌ User already exists:', email);
-      return res.status(400).json({ error: 'User already exists with this email' });
+      console.log("❌ User already exists:", email);
+      return res
+        .status(400)
+        .json({ error: "User already exists with this email" });
     }
 
     // Hash password
@@ -301,7 +357,7 @@ app.post('/api/auth/register', async (req, res) => {
       email,
       password: hashedPassword,
       name: userName,
-      created_at: serverTimestamp()
+      created_at: serverTimestamp(),
     };
 
     // Add optional fields if provided
@@ -310,25 +366,28 @@ app.post('/api/auth/register', async (req, res) => {
     if (profileImageUrl) userData.profile_image_url = profileImageUrl;
     if (preferences) userData.preferences = preferences;
 
-    console.log('💾 Creating user with data:', {
+    console.log("💾 Creating user with data:", {
       ...userData,
-      password: '[HASHED]'
+      password: "[HASHED]",
     });
 
     // Create user in Firestore
     const userDoc = await usersCollection.add(userData);
 
     // Generate JWT token
-    const token = jwt.sign(
-      { userId: userDoc.id, email },
-      JWT_SECRET,
-      { expiresIn: '7d' }
+    const token = jwt.sign({ userId: userDoc.id, email }, JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    console.log(
+      "✅ User registered successfully:",
+      email,
+      "with ID:",
+      userDoc.id
     );
 
-    console.log('✅ User registered successfully:', email, 'with ID:', userDoc.id);
-
     res.status(201).json({
-      message: 'User registered successfully',
+      message: "User registered successfully",
       token,
       user: {
         id: userDoc.id,
@@ -336,29 +395,31 @@ app.post('/api/auth/register', async (req, res) => {
         name: userName,
         date_of_birth: dateOfBirth,
         gender,
-        profile_image_url: profileImageUrl
-      }
+        profile_image_url: profileImageUrl,
+      },
     });
   } catch (error) {
-    console.error('❌ Registration error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("❌ Registration error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Login endpoint
-app.post('/api/auth/login', async (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      return res.status(400).json({ error: "Email and password are required" });
     }
 
     // Find user by email
-    const userSnapshot = await usersCollection.where('email', '==', email).get();
-    
+    const userSnapshot = await usersCollection
+      .where("email", "==", email)
+      .get();
+
     if (userSnapshot.empty) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: "Invalid email or password" });
     }
 
     const userDoc = userSnapshot.docs[0];
@@ -366,94 +427,127 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, userData.password);
-    
+
     if (!isPasswordValid) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: "Invalid email or password" });
     }
 
     // Generate JWT token
     const token = jwt.sign(
       { userId: userDoc.id, email: userData.email },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: "7d" }
     );
 
-    console.log('✅ User logged in successfully:', email);
+    console.log("✅ User logged in successfully:", email);
     res.json({
-      message: 'Login successful',
+      message: "Login successful",
       token,
       user: {
         id: userDoc.id,
         email: userData.email,
-        name: userData.name
-      }
+        name: userData.name,
+      },
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // DOG BREEDS ROUTE
-app.get('/api/dog-breeds', async (req, res) => {
+app.get("/api/dog-breeds", async (req, res) => {
   try {
-    console.log('🐕 Fetching dog breeds from external API...');
-    
+    console.log("🐕 Fetching dog breeds from external API...");
+
     const apiKey = process.env.DOG_API_KEY;
-    const apiUrl = 'https://api.thedogapi.com/v1';
+    const apiUrl = "https://api.thedogapi.com/v1";
 
     if (!apiKey) {
-      console.log('⚠️ Dog API key not found, using fallback breeds');
+      console.log("⚠️ Dog API key not found, using fallback breeds");
       const fallbackBreeds = [
-        'Golden Retriever', 'Labrador Retriever', 'German Shepherd', 'Bulldogs', 'Poodle',
-        'Beagle', 'Rottweiler', 'Yorkshire Terrier', 'Dachshund', 'Siberian Husky',
-        'Boxer', 'Great Dane', 'Chihuahua', 'Shih Tzu', 'Boston Terrier',
-        'Bernese Mountain Dog', 'Cocker Spaniel', 'Border Collie', 'Australian Shepherd',
-        'Mixed Breed', 'Unknown'
+        "Golden Retriever",
+        "Labrador Retriever",
+        "German Shepherd",
+        "Bulldogs",
+        "Poodle",
+        "Beagle",
+        "Rottweiler",
+        "Yorkshire Terrier",
+        "Dachshund",
+        "Siberian Husky",
+        "Boxer",
+        "Great Dane",
+        "Chihuahua",
+        "Shih Tzu",
+        "Boston Terrier",
+        "Bernese Mountain Dog",
+        "Cocker Spaniel",
+        "Border Collie",
+        "Australian Shepherd",
+        "Mixed Breed",
+        "Unknown",
       ];
-      
-      return res.json({ 
-        success: true, 
+
+      return res.json({
+        success: true,
         breeds: fallbackBreeds.sort(),
-        source: 'fallback'
+        source: "fallback",
       });
     }
 
     const response = await fetch(`${apiUrl}/breeds`, {
       headers: {
-        'x-api-key': apiKey,
-        'Content-Type': 'application/json'
-      }
+        "x-api-key": apiKey,
+        "Content-Type": "application/json",
+      },
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch breeds from external API - Status: ${response.status}`);
+      throw new Error(
+        `Failed to fetch breeds from external API - Status: ${response.status}`
+      );
     }
 
     const breedsData = await response.json();
-    const breedNames = breedsData.map(breed => breed.name).sort();
-    
-    res.json({ 
-      success: true, 
-      breeds: breedNames,
-      source: 'api'
-    });
+    const breedNames = breedsData.map((breed) => breed.name).sort();
 
+    res.json({
+      success: true,
+      breeds: breedNames,
+      source: "api",
+    });
   } catch (error) {
-    console.error('Error fetching dog breeds:', error.message);
-    
+    console.error("Error fetching dog breeds:", error.message);
+
     const fallbackBreeds = [
-      'Golden Retriever', 'Labrador Retriever', 'German Shepherd', 'Bulldogs', 'Poodle',
-      'Beagle', 'Rottweiler', 'Yorkshire Terrier', 'Dachshund', 'Siberian Husky',
-      'Boxer', 'Great Dane', 'Chihuahua', 'Shih Tzu', 'Boston Terrier',
-      'Bernese Mountain Dog', 'Cocker Spaniel', 'Border Collie', 'Australian Shepherd',
-      'Mixed Breed', 'Unknown'
+      "Golden Retriever",
+      "Labrador Retriever",
+      "German Shepherd",
+      "Bulldogs",
+      "Poodle",
+      "Beagle",
+      "Rottweiler",
+      "Yorkshire Terrier",
+      "Dachshund",
+      "Siberian Husky",
+      "Boxer",
+      "Great Dane",
+      "Chihuahua",
+      "Shih Tzu",
+      "Boston Terrier",
+      "Bernese Mountain Dog",
+      "Cocker Spaniel",
+      "Border Collie",
+      "Australian Shepherd",
+      "Mixed Breed",
+      "Unknown",
     ];
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       breeds: fallbackBreeds.sort(),
-      source: 'fallback'
+      source: "fallback",
     });
   }
 });
@@ -461,206 +555,237 @@ app.get('/api/dog-breeds', async (req, res) => {
 // DOG PARKS MANAGEMENT ROUTES
 
 // Get all dog parks
-app.get('/api/dog-parks', async (req, res) => {
+app.get("/api/dog-parks", async (req, res) => {
   try {
-    console.log('🏞️ Fetching dog parks from Firestore...');
+    console.log("🏞️ Fetching dog parks from Firestore...");
     const parksSnapshot = await dogParksCollection.get();
-    
+
     const parks = [];
-    parksSnapshot.forEach(doc => {
+    parksSnapshot.forEach((doc) => {
       const docData = doc.data();
       const { id: _, ...cleanDocData } = docData;
-      
+
       parks.push({
         id: doc.id,
-        ...cleanDocData
+        ...cleanDocData,
       });
     });
 
-    console.log('✅ Dog parks loaded successfully:', parks.length, 'parks found');
-    res.json({ 
+    console.log(
+      "✅ Dog parks loaded successfully:",
+      parks.length,
+      "parks found"
+    );
+    res.json({
       success: true,
-      parks 
+      parks,
     });
   } catch (error) {
-    console.error('❌ Error fetching dog parks:', error);
-    res.status(500).json({ 
+    console.error("❌ Error fetching dog parks:", error);
+    res.status(500).json({
       success: false,
-      error: 'Internal server error' 
+      error: "Internal server error",
     });
   }
 });
 
 // Check in dogs to a park
-app.post('/api/dog-parks/:parkId/checkin', authenticateToken, async (req, res) => {
-  try {
-    const { parkId } = req.params;
-    const { dogIds } = req.body;
+app.post(
+  "/api/dog-parks/:parkId/checkin",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { parkId } = req.params;
+      const { dogIds } = req.body;
 
-    if (!dogIds || !Array.isArray(dogIds) || dogIds.length === 0) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'dogIds array is required and must contain at least one dog ID' 
-      });
-    }
-
-    console.log('🏞️ Checking in dogs to park:', parkId, 'Dogs:', dogIds);
-
-    // Verify the park exists
-    const parkDoc = await dogParksCollection.doc(parkId).get();
-    
-    if (!parkDoc.exists) {
-      return res.status(404).json({ 
-        success: false,
-        error: 'Park not found' 
-      });
-    }
-
-    // Verify that all dogs belong to the authenticated user
-    const dogPromises = dogIds.map(dogId => dogsCollection.doc(dogId).get());
-    const dogDocs = await Promise.all(dogPromises);
-    
-    for (let i = 0; i < dogDocs.length; i++) {
-      const dogDoc = dogDocs[i];
-      if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
-        return res.status(403).json({ 
+      if (!dogIds || !Array.isArray(dogIds) || dogIds.length === 0) {
+        return res.status(400).json({
           success: false,
-          error: `Dog with ID ${dogIds[i]} not found or not authorized` 
+          error:
+            "dogIds array is required and must contain at least one dog ID",
         });
       }
+
+      console.log("🏞️ Checking in dogs to park:", parkId, "Dogs:", dogIds);
+
+      // Verify the park exists
+      const parkDoc = await dogParksCollection.doc(parkId).get();
+
+      if (!parkDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          error: "Park not found",
+        });
+      }
+
+      // Verify that all dogs belong to the authenticated user
+      const dogPromises = dogIds.map((dogId) =>
+        dogsCollection.doc(dogId).get()
+      );
+      const dogDocs = await Promise.all(dogPromises);
+
+      for (let i = 0; i < dogDocs.length; i++) {
+        const dogDoc = dogDocs[i];
+        if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
+          return res.status(403).json({
+            success: false,
+            error: `Dog with ID ${dogIds[i]} not found or not authorized`,
+          });
+        }
+      }
+
+      // Get current checked in dogs or initialize empty array
+      const parkData = parkDoc.data();
+      const currentCheckedInDogs = parkData.checkedInDogs || [];
+
+      // Add new dog IDs to the array (avoid duplicates)
+      const updatedCheckedInDogs = [
+        ...new Set([...currentCheckedInDogs, ...dogIds]),
+      ];
+
+      // Update the park with new checked in dogs
+      await dogParksCollection.doc(parkId).update({
+        checkedInDogs: updatedCheckedInDogs,
+        updated_at: serverTimestamp(),
+      });
+
+      console.log("✅ Dogs checked in successfully at park:", parkId);
+      res.json({
+        success: true,
+        message: "Dogs checked in successfully",
+        checkedInDogs: updatedCheckedInDogs,
+      });
+    } catch (error) {
+      console.error("❌ Error checking in dogs:", error);
+      res.status(500).json({
+        success: false,
+        error: "Internal server error",
+      });
     }
-
-    // Get current checked in dogs or initialize empty array
-    const parkData = parkDoc.data();
-    const currentCheckedInDogs = parkData.checkedInDogs || [];
-    
-    // Add new dog IDs to the array (avoid duplicates)
-    const updatedCheckedInDogs = [...new Set([...currentCheckedInDogs, ...dogIds])];
-
-    // Update the park with new checked in dogs
-    await dogParksCollection.doc(parkId).update({
-      checkedInDogs: updatedCheckedInDogs,
-      updated_at: serverTimestamp()
-    });
-
-    console.log('✅ Dogs checked in successfully at park:', parkId);
-    res.json({
-      success: true,
-      message: 'Dogs checked in successfully',
-      checkedInDogs: updatedCheckedInDogs
-    });
-  } catch (error) {
-    console.error('❌ Error checking in dogs:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Internal server error' 
-    });
   }
-});
+);
 
 // Check out dogs from a park
-app.post('/api/dog-parks/:parkId/checkout', authenticateToken, async (req, res) => {
-  try {
-    const { parkId } = req.params;
-    const { dogIds } = req.body;
+app.post(
+  "/api/dog-parks/:parkId/checkout",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { parkId } = req.params;
+      const { dogIds } = req.body;
 
-    if (!dogIds || !Array.isArray(dogIds) || dogIds.length === 0) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'dogIds array is required and must contain at least one dog ID' 
-      });
-    }
-
-    console.log('🚪 Checking out dogs from park:', parkId, 'Dogs:', dogIds);
-
-    // Verify the park exists
-    const parkDoc = await dogParksCollection.doc(parkId).get();
-    
-    if (!parkDoc.exists) {
-      return res.status(404).json({ 
-        success: false,
-        error: 'Park not found' 
-      });
-    }
-
-    // Verify that all dogs belong to the authenticated user
-    const dogPromises = dogIds.map(dogId => dogsCollection.doc(dogId).get());
-    const dogDocs = await Promise.all(dogPromises);
-    
-    for (let i = 0; i < dogDocs.length; i++) {
-      const dogDoc = dogDocs[i];
-      if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
-        return res.status(403).json({ 
+      if (!dogIds || !Array.isArray(dogIds) || dogIds.length === 0) {
+        return res.status(400).json({
           success: false,
-          error: `Dog with ID ${dogIds[i]} not found or not authorized` 
+          error:
+            "dogIds array is required and must contain at least one dog ID",
         });
       }
+
+      console.log("🚪 Checking out dogs from park:", parkId, "Dogs:", dogIds);
+
+      // Verify the park exists
+      const parkDoc = await dogParksCollection.doc(parkId).get();
+
+      if (!parkDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          error: "Park not found",
+        });
+      }
+
+      // Verify that all dogs belong to the authenticated user
+      const dogPromises = dogIds.map((dogId) =>
+        dogsCollection.doc(dogId).get()
+      );
+      const dogDocs = await Promise.all(dogPromises);
+
+      for (let i = 0; i < dogDocs.length; i++) {
+        const dogDoc = dogDocs[i];
+        if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
+          return res.status(403).json({
+            success: false,
+            error: `Dog with ID ${dogIds[i]} not found or not authorized`,
+          });
+        }
+      }
+
+      // Get current checked in dogs
+      const parkData = parkDoc.data();
+      const currentCheckedInDogs = parkData.checkedInDogs || [];
+
+      // Remove the dog IDs from the array
+      const updatedCheckedInDogs = currentCheckedInDogs.filter(
+        (dogId) => !dogIds.includes(dogId)
+      );
+
+      // Update the park with the updated checked in dogs list
+      await dogParksCollection.doc(parkId).update({
+        checkedInDogs: updatedCheckedInDogs,
+        updated_at: serverTimestamp(),
+      });
+
+      console.log("✅ Dogs checked out successfully from park:", parkId);
+      res.json({
+        success: true,
+        message: "Dogs checked out successfully",
+        checkedInDogs: updatedCheckedInDogs,
+      });
+    } catch (error) {
+      console.error("❌ Error checking out dogs:", error);
+      res.status(500).json({
+        success: false,
+        error: "Internal server error",
+      });
     }
-
-    // Get current checked in dogs
-    const parkData = parkDoc.data();
-    const currentCheckedInDogs = parkData.checkedInDogs || [];
-    
-    // Remove the dog IDs from the array
-    const updatedCheckedInDogs = currentCheckedInDogs.filter(dogId => !dogIds.includes(dogId));
-
-    // Update the park with the updated checked in dogs list
-    await dogParksCollection.doc(parkId).update({
-      checkedInDogs: updatedCheckedInDogs,
-      updated_at: serverTimestamp()
-    });
-
-    console.log('✅ Dogs checked out successfully from park:', parkId);
-    res.json({
-      success: true,
-      message: 'Dogs checked out successfully',
-      checkedInDogs: updatedCheckedInDogs
-    });
-  } catch (error) {
-    console.error('❌ Error checking out dogs:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Internal server error' 
-    });
   }
-});
+);
 
 // Get all dogs checked into a park
-app.get('/api/dog-parks/:parkId/dogs', authenticateToken, async (req, res) => {
+app.get("/api/dog-parks/:parkId/dogs", authenticateToken, async (req, res) => {
   try {
     const { parkId } = req.params;
 
-    console.log('🐕 Getting dogs checked into park:', parkId);
+    console.log("🐕 Getting dogs checked into park:", parkId);
 
     // Verify the park exists
     const parkDoc = await dogParksCollection.doc(parkId).get();
-    
+
     if (!parkDoc.exists) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        error: 'Park not found' 
+        error: "Park not found",
       });
     }
 
     // Get the list of checked in dog IDs
     const parkData = parkDoc.data();
     const checkedInDogIds = parkData.checkedInDogs || [];
-    
+
     if (checkedInDogIds.length === 0) {
       return res.json({
         success: true,
-        dogs: []
+        dogs: [],
       });
     }
 
     // Fetch all the dog documents
-    const dogPromises = checkedInDogIds.map(dogId => dogsCollection.doc(dogId).get());
+    const dogPromises = checkedInDogIds.map((dogId) =>
+      dogsCollection.doc(dogId).get()
+    );
     const dogDocs = await Promise.all(dogPromises);
-    
+
     const checkedInDogs = [];
-    dogDocs.forEach((dogDoc, index) => {
+    for (let i = 0; i < dogDocs.length; i++) {
+      const dogDoc = dogDocs[i];
       if (dogDoc.exists) {
         const dogData = dogDoc.data();
+        let photoUrl = dogData.photo_url || "";
+        const key = dogData.photo_key || extractS3KeyFromUrl(photoUrl);
+        if (key) {
+          const signed = await getSignedUrlForKey(key, 3600);
+          if (signed) photoUrl = signed;
+        }
         checkedInDogs.push({
           id: dogDoc.id,
           name: dogData.name,
@@ -669,24 +794,24 @@ app.get('/api/dog-parks/:parkId/dogs', authenticateToken, async (req, res) => {
           emoji: dogData.emoji,
           owner_id: dogData.owner_id,
           energy_level: dogData.energy_level,
-          photo_url: dogData.photo_url,
-          friends: dogData.friends || []
+          photo_url: photoUrl,
+          friends: dogData.friends || [],
         });
       } else {
-        console.log(`Dog with ID ${checkedInDogIds[index]} not found in database`);
+        console.log(`Dog with ID ${checkedInDogIds[i]} not found in database`);
       }
-    });
+    }
 
-    console.log('✅ Found', checkedInDogs.length, 'dogs checked into park');
+    console.log("✅ Found", checkedInDogs.length, "dogs checked into park");
     res.json({
       success: true,
-      dogs: checkedInDogs
+      dogs: checkedInDogs,
     });
   } catch (error) {
-    console.error('❌ Error getting dogs in park:', error);
-    res.status(500).json({ 
+    console.error("❌ Error getting dogs in park:", error);
+    res.status(500).json({
       success: false,
-      error: 'Internal server error' 
+      error: "Internal server error",
     });
   }
 });
@@ -694,32 +819,84 @@ app.get('/api/dog-parks/:parkId/dogs', authenticateToken, async (req, res) => {
 // DOG MANAGEMENT ROUTES
 
 // Get all dogs for the authenticated user
-app.get('/api/dogs', authenticateToken, async (req, res) => {
+app.get("/api/dogs", authenticateToken, async (req, res) => {
   try {
-    const dogsSnapshot = await dogsCollection.where('owner_id', '==', req.user.userId).get();
-    
-    const userDogs = [];
-    dogsSnapshot.forEach(doc => {
-      userDogs.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
+    console.log("🐕 Fetching dogs for user:", req.user.userId);
+    const dogsSnapshot = await dogsCollection
+      .where("owner_id", "==", req.user.userId)
+      .get();
 
+    const userDogs = [];
+    for (const doc of dogsSnapshot.docs) {
+      const data = doc.data();
+      let photoUrl = data.photo_url || "";
+
+      console.log(
+        `🐕 Processing dog: ${
+          data.name
+        }, has photo_key: ${!!data.photo_key}, photo_url length: ${
+          photoUrl.length
+        }`
+      );
+
+      // Priority 1: Use stored photo_key if available
+      if (data.photo_key) {
+        console.log(`  Using photo_key: ${data.photo_key}`);
+        const signed = await getSignedUrlForKey(data.photo_key, 604800); // 7 days
+        if (signed) {
+          photoUrl = signed;
+          console.log(`  ✅ Generated fresh signed URL`);
+        } else {
+          console.log(`  ❌ Failed to generate signed URL from key`);
+        }
+      }
+      // Priority 2: Try extracting key from existing URL
+      else if (photoUrl) {
+        const key = extractS3KeyFromUrl(photoUrl);
+        if (key) {
+          console.log(`  Extracted key from URL: ${key}`);
+          const signed = await getSignedUrlForKey(key, 604800);
+          if (signed) {
+            photoUrl = signed;
+            console.log(`  ✅ Generated fresh signed URL from extracted key`);
+            // Update dog with the extracted key for future use
+            await dogsCollection.doc(doc.id).update({
+              photo_key: key,
+              updated_at: serverTimestamp(),
+            });
+            console.log(`  💾 Saved photo_key to database for future use`);
+          }
+        } else {
+          console.log(
+            `  ⚠️ Could not extract key from photo_url, keeping original`
+          );
+        }
+      } else {
+        console.log(`  ℹ️ No photo for this dog`);
+      }
+
+      userDogs.push({ id: doc.id, ...data, photo_url: photoUrl });
+    }
+
+    console.log(
+      `✅ Returning ${userDogs.length} dogs with refreshed photo URLs`
+    );
     res.json({ dogs: userDogs });
   } catch (error) {
-    console.error('Get dogs error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Get dogs error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Add a new dog for the authenticated user
-app.post('/api/dogs', authenticateToken, async (req, res) => {
+app.post("/api/dogs", authenticateToken, async (req, res) => {
   try {
     const { name, breed, age, energyLevel, playStyle, emoji } = req.body;
 
     if (!name || !breed || !age) {
-      return res.status(400).json({ error: 'Name, breed, and age are required' });
+      return res
+        .status(400)
+        .json({ error: "Name, breed, and age are required" });
     }
 
     // Create new dog in Firestore
@@ -728,15 +905,15 @@ app.post('/api/dogs', authenticateToken, async (req, res) => {
       name,
       breed,
       age: parseFloat(age),
-      energy_level: energyLevel || '',
+      energy_level: energyLevel || "",
       play_style: playStyle || [],
-      size: '',
-      photo_url: '', 
+      size: "",
+      photo_url: "",
       friends: [],
       gets_along_with: [],
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),
-      emoji: emoji || '🐕'
+      emoji: emoji || "🐕",
     });
 
     // Get the created dog data
@@ -746,17 +923,17 @@ app.post('/api/dogs', authenticateToken, async (req, res) => {
     res.status(201).json({
       dog: {
         id: dogDoc.id,
-        ...dogData
-      }
+        ...dogData,
+      },
     });
   } catch (error) {
-    console.error('Add dog error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Add dog error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Update an existing dog
-app.put('/api/dogs/:dogId', authenticateToken, async (req, res) => {
+app.put("/api/dogs/:dogId", authenticateToken, async (req, res) => {
   try {
     const { dogId } = req.params;
     const { name, breed, age, energyLevel, playStyle, emoji } = req.body;
@@ -764,12 +941,12 @@ app.put('/api/dogs/:dogId', authenticateToken, async (req, res) => {
     // Verify dog exists and belongs to user
     const dogDoc = await dogsCollection.doc(dogId).get();
     if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
-      return res.status(404).json({ error: 'Dog not found or not authorized' });
+      return res.status(404).json({ error: "Dog not found or not authorized" });
     }
 
     // Prepare update data
     const updateData = {
-      updated_at: serverTimestamp()
+      updated_at: serverTimestamp(),
     };
 
     if (name !== undefined) updateData.name = name;
@@ -789,297 +966,328 @@ app.put('/api/dogs/:dogId', authenticateToken, async (req, res) => {
     res.json({
       dog: {
         id: dogId,
-        ...updatedData
-      }
+        ...updatedData,
+      },
     });
   } catch (error) {
-    console.error('Update dog error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Update dog error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Delete a dog
-app.delete('/api/dogs/:dogId', authenticateToken, async (req, res) => {
+app.delete("/api/dogs/:dogId", authenticateToken, async (req, res) => {
   try {
     const { dogId } = req.params;
 
     // Verify dog exists and belongs to user
     const dogDoc = await dogsCollection.doc(dogId).get();
     if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
-      return res.status(404).json({ error: 'Dog not found or not authorized' });
+      return res.status(404).json({ error: "Dog not found or not authorized" });
     }
 
     // Delete the dog
     await dogsCollection.doc(dogId).delete();
 
-    res.json({ message: 'Dog deleted successfully' });
+    res.json({ message: "Dog deleted successfully" });
   } catch (error) {
-    console.error('Delete dog error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Delete dog error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Upload dog photo
-app.post('/api/dogs/:dogId/photo', authenticateToken, upload.single('photo'), async (req, res) => {
-  try {
-    const { dogId } = req.params;
+app.post(
+  "/api/dogs/:dogId/photo",
+  authenticateToken,
+  upload.single("photo"),
+  async (req, res) => {
+    try {
+      const { dogId } = req.params;
 
-    if (!req.file) {
-      return res.status(400).json({ error: 'No photo file provided' });
+      if (!req.file) {
+        return res.status(400).json({ error: "No photo file provided" });
+      }
+
+      // Verify dog exists and belongs to user
+      const dogDoc = await dogsCollection.doc(dogId).get();
+      if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
+        return res
+          .status(404)
+          .json({ error: "Dog not found or not authorized" });
+      }
+
+      // Validate image file
+      const validation = validateImageFile(req.file);
+      if (!validation.isValid && !validation.valid) {
+        // support both shapes
+        const errMsg = validation.error || "Invalid image";
+        return res.status(400).json({ error: errMsg });
+      }
+
+      // Upload to S3
+      const uploadResult = await uploadToS3(req.file, req.user.userId, dogId);
+
+      if (!uploadResult.success) {
+        return res.status(500).json({ error: uploadResult.error });
+      }
+
+      // Update dog with photo URL
+      await dogsCollection.doc(dogId).update({
+        photo_key: uploadResult.key,
+        photo_url: uploadResult.photoUrl,
+        updated_at: serverTimestamp(),
+      });
+
+      res.json({
+        success: true,
+        photo_url: uploadResult.photoUrl,
+        message: "Photo uploaded successfully",
+      });
+    } catch (error) {
+      console.error("Error uploading dog photo:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
-
-    // Verify dog exists and belongs to user
-    const dogDoc = await dogsCollection.doc(dogId).get();
-    if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
-      return res.status(404).json({ error: 'Dog not found or not authorized' });
-    }
-
-    // Validate image file
-    const validation = validateImageFile(req.file);
-    if (!validation.isValid) {
-      return res.status(400).json({ error: validation.error });
-    }
-
-    // Upload to S3
-    const uploadResult = await uploadToS3(req.file, req.user.userId, dogId);
-    
-    if (!uploadResult.success) {
-      return res.status(500).json({ error: uploadResult.error });
-    }
-
-    // Update dog with photo URL
-    await dogsCollection.doc(dogId).update({
-      photo_url: uploadResult.url,
-      updated_at: serverTimestamp()
-    });
-
-    res.json({
-      success: true,
-      photo_url: uploadResult.url,
-      message: 'Photo uploaded successfully'
-    });
-
-  } catch (error) {
-    console.error('Error uploading dog photo:', error);
-    res.status(500).json({ error: 'Internal server error' });
   }
-});
+);
 
 // FRIEND MANAGEMENT ROUTES
 
 // Send friend request
-app.post('/api/dogs/:dogId/friends/:friendDogId', authenticateToken, async (req, res) => {
-  try {
-    const { dogId, friendDogId } = req.params;
+app.post(
+  "/api/dogs/:dogId/friends/:friendDogId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { dogId, friendDogId } = req.params;
 
-    console.log(`🤝 Processing friend request: ${dogId} wants to befriend ${friendDogId}`);
+      console.log(
+        `🤝 Processing friend request: ${dogId} wants to befriend ${friendDogId}`
+      );
 
-    // Get both dog documents
-    const [myDogDoc, friendDogDoc] = await Promise.all([
-      dogsCollection.doc(dogId).get(),
-      dogsCollection.doc(friendDogId).get()
-    ]);
+      // Get both dog documents
+      const [myDogDoc, friendDogDoc] = await Promise.all([
+        dogsCollection.doc(dogId).get(),
+        dogsCollection.doc(friendDogId).get(),
+      ]);
 
-    // Verify my dog exists and belongs to user
-    if (!myDogDoc.exists || myDogDoc.data().owner_id !== req.user.userId) {
-      return res.status(404).json({ 
-        success: false,
-        error: 'Your dog not found or not authorized' 
-      });
-    }
-
-    // Verify friend dog exists
-    if (!friendDogDoc.exists) {
-      return res.status(404).json({ 
-        success: false,
-        error: 'Friend dog not found' 
-      });
-    }
-
-    const myDogData = myDogDoc.data();
-    const friendDogData = friendDogDoc.data();
-
-    // Check if both dogs are currently in the same park
-    const parksSnapshot = await dogParksCollection.get();
-    let bothDogsInSamePark = false;
-    let parkName = '';
-
-    for (const parkDoc of parksSnapshot.docs) {
-      const parkData = parkDoc.data();
-      const checkedInDogs = parkData.checkedInDogs || [];
-      
-      if (checkedInDogs.includes(dogId) && checkedInDogs.includes(friendDogId)) {
-        bothDogsInSamePark = true;
-        parkName = parkData.name;
-        break;
+      // Verify my dog exists and belongs to user
+      if (!myDogDoc.exists || myDogDoc.data().owner_id !== req.user.userId) {
+        return res.status(404).json({
+          success: false,
+          error: "Your dog not found or not authorized",
+        });
       }
-    }
 
-    if (!bothDogsInSamePark) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Dogs can only send friend requests when they are both checked into the same park' 
-      });
-    }
-
-    // Check if they are already friends
-    const currentFriends = myDogData.friends || [];
-    if (currentFriends.includes(friendDogId)) {
-      return res.status(400).json({ 
-        success: false,
-        error: `${myDogData.name} and ${friendDogData.name} are already friends!` 
-      });
-    }
-
-    // Check if a friend request already exists (in either direction)
-    const existingRequestsSnapshot = await friendRequestsCollection
-      .where('status', '==', 'pending')
-      .get();
-
-    let requestExists = false;
-    existingRequestsSnapshot.forEach(doc => {
-      const requestData = doc.data();
-      if ((requestData.from_dog_id === dogId && requestData.to_dog_id === friendDogId) ||
-          (requestData.from_dog_id === friendDogId && requestData.to_dog_id === dogId)) {
-        requestExists = true;
+      // Verify friend dog exists
+      if (!friendDogDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          error: "Friend dog not found",
+        });
       }
-    });
 
-    if (requestExists) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'A friend request already exists between these dogs' 
+      const myDogData = myDogDoc.data();
+      const friendDogData = friendDogDoc.data();
+
+      // Check if both dogs are currently in the same park
+      const parksSnapshot = await dogParksCollection.get();
+      let bothDogsInSamePark = false;
+      let parkName = "";
+
+      for (const parkDoc of parksSnapshot.docs) {
+        const parkData = parkDoc.data();
+        const checkedInDogs = parkData.checkedInDogs || [];
+
+        if (
+          checkedInDogs.includes(dogId) &&
+          checkedInDogs.includes(friendDogId)
+        ) {
+          bothDogsInSamePark = true;
+          parkName = parkData.name;
+          break;
+        }
+      }
+
+      if (!bothDogsInSamePark) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Dogs can only send friend requests when they are both checked into the same park",
+        });
+      }
+
+      // Check if they are already friends
+      const currentFriends = myDogData.friends || [];
+      if (currentFriends.includes(friendDogId)) {
+        return res.status(400).json({
+          success: false,
+          error: `${myDogData.name} and ${friendDogData.name} are already friends!`,
+        });
+      }
+
+      // Check if a friend request already exists (in either direction)
+      const existingRequestsSnapshot = await friendRequestsCollection
+        .where("status", "==", "pending")
+        .get();
+
+      let requestExists = false;
+      existingRequestsSnapshot.forEach((doc) => {
+        const requestData = doc.data();
+        if (
+          (requestData.from_dog_id === dogId &&
+            requestData.to_dog_id === friendDogId) ||
+          (requestData.from_dog_id === friendDogId &&
+            requestData.to_dog_id === dogId)
+        ) {
+          requestExists = true;
+        }
       });
-    }
 
-    // Create friend request
-    const friendRequestDoc = await friendRequestsCollection.add({
-      from_dog_id: dogId,
-      to_dog_id: friendDogId,
-      status: 'pending',
-      created_at: serverTimestamp()
-    });
+      if (requestExists) {
+        return res.status(400).json({
+          success: false,
+          error: "A friend request already exists between these dogs",
+        });
+      }
 
-    // Create notification for the recipient
-    await notificationsCollection.add({
-      user_id: friendDogData.owner_id,
-      type: 'friend_request',
-      title: 'New Friend Request!',
-      message: `${myDogData.name} wants to be friends with ${friendDogData.name} at ${parkName}`,
-      data: {
-        friend_request_id: friendRequestDoc.id,
+      // Create friend request
+      const friendRequestDoc = await friendRequestsCollection.add({
         from_dog_id: dogId,
-        from_dog_name: myDogData.name,
         to_dog_id: friendDogId,
-        to_dog_name: friendDogData.name,
-        park_name: parkName
-      },
-      read: false,
-      created_at: serverTimestamp()
-    });
+        status: "pending",
+        created_at: serverTimestamp(),
+      });
 
-    console.log(`✅ Friend request sent: ${myDogData.name} → ${friendDogData.name} at ${parkName}`);
+      // Create notification for the recipient
+      await notificationsCollection.add({
+        user_id: friendDogData.owner_id,
+        type: "friend_request",
+        title: "New Friend Request!",
+        message: `${myDogData.name} wants to be friends with ${friendDogData.name} at ${parkName}`,
+        data: {
+          friend_request_id: friendRequestDoc.id,
+          from_dog_id: dogId,
+          from_dog_name: myDogData.name,
+          to_dog_id: friendDogId,
+          to_dog_name: friendDogData.name,
+          park_name: parkName,
+        },
+        read: false,
+        created_at: serverTimestamp(),
+      });
 
-    res.json({
-      success: true,
-      message: `Friend request sent to ${friendDogData.name}'s owner! 🐕💌`,
-      friend_request_id: friendRequestDoc.id,
-      parkName
-    });
+      console.log(
+        `✅ Friend request sent: ${myDogData.name} → ${friendDogData.name} at ${parkName}`
+      );
 
-  } catch (error) {
-    console.error('❌ Error sending friend request:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Internal server error' 
-    });
+      res.json({
+        success: true,
+        message: `Friend request sent to ${friendDogData.name}'s owner! 🐕💌`,
+        friend_request_id: friendRequestDoc.id,
+        parkName,
+      });
+    } catch (error) {
+      console.error("❌ Error sending friend request:", error);
+      res.status(500).json({
+        success: false,
+        error: "Internal server error",
+      });
+    }
   }
-});
+);
 
 // Remove friend
-app.delete('/api/dogs/:dogId/friends/:friendDogId', authenticateToken, async (req, res) => {
-  try {
-    const { dogId, friendDogId } = req.params;
+app.delete(
+  "/api/dogs/:dogId/friends/:friendDogId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { dogId, friendDogId } = req.params;
 
-    console.log(`💔 Processing unfriend request: ${dogId} wants to remove ${friendDogId}`);
+      console.log(
+        `💔 Processing unfriend request: ${dogId} wants to remove ${friendDogId}`
+      );
 
-    // Get both dog documents
-    const [myDogDoc, friendDogDoc] = await Promise.all([
-      dogsCollection.doc(dogId).get(),
-      dogsCollection.doc(friendDogId).get()
-    ]);
+      // Get both dog documents
+      const [myDogDoc, friendDogDoc] = await Promise.all([
+        dogsCollection.doc(dogId).get(),
+        dogsCollection.doc(friendDogId).get(),
+      ]);
 
-    // Verify my dog exists and belongs to user
-    if (!myDogDoc.exists || myDogDoc.data().owner_id !== req.user.userId) {
-      return res.status(404).json({ 
+      // Verify my dog exists and belongs to user
+      if (!myDogDoc.exists || myDogDoc.data().owner_id !== req.user.userId) {
+        return res.status(404).json({
+          success: false,
+          error: "Your dog not found or not authorized",
+        });
+      }
+
+      // Verify friend dog exists
+      if (!friendDogDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          error: "Friend dog not found",
+        });
+      }
+
+      const myDogData = myDogDoc.data();
+      const friendDogData = friendDogDoc.data();
+
+      // Check if they are actually friends
+      const myDogFriends = myDogData.friends || [];
+      const friendDogFriends = friendDogData.friends || [];
+
+      if (!myDogFriends.includes(friendDogId)) {
+        return res.status(400).json({
+          success: false,
+          error: `${myDogData.name} and ${friendDogData.name} are not friends`,
+        });
+      }
+
+      // Remove each dog from the other's friends list
+      await Promise.all([
+        dogsCollection.doc(dogId).update({
+          friends: myDogFriends.filter((id) => id !== friendDogId),
+          updated_at: serverTimestamp(),
+        }),
+        dogsCollection.doc(friendDogId).update({
+          friends: friendDogFriends.filter((id) => id !== dogId),
+          updated_at: serverTimestamp(),
+        }),
+      ]);
+
+      console.log(
+        `💔 Friendship ended: ${myDogData.name} ↔ ${friendDogData.name}`
+      );
+
+      res.json({
+        success: true,
+        message: `${myDogData.name} and ${friendDogData.name} are no longer friends`,
+      });
+    } catch (error) {
+      console.error("❌ Error removing friend:", error);
+      res.status(500).json({
         success: false,
-        error: 'Your dog not found or not authorized' 
+        error: "Internal server error",
       });
     }
-
-    // Verify friend dog exists
-    if (!friendDogDoc.exists) {
-      return res.status(404).json({ 
-        success: false,
-        error: 'Friend dog not found' 
-      });
-    }
-
-    const myDogData = myDogDoc.data();
-    const friendDogData = friendDogDoc.data();
-
-    // Check if they are actually friends
-    const myDogFriends = myDogData.friends || [];
-    const friendDogFriends = friendDogData.friends || [];
-
-    if (!myDogFriends.includes(friendDogId)) {
-      return res.status(400).json({ 
-        success: false,
-        error: `${myDogData.name} and ${friendDogData.name} are not friends` 
-      });
-    }
-
-    // Remove each dog from the other's friends list
-    await Promise.all([
-      dogsCollection.doc(dogId).update({
-        friends: myDogFriends.filter(id => id !== friendDogId),
-        updated_at: serverTimestamp()
-      }),
-      dogsCollection.doc(friendDogId).update({
-        friends: friendDogFriends.filter(id => id !== dogId),
-        updated_at: serverTimestamp()
-      })
-    ]);
-
-    console.log(`💔 Friendship ended: ${myDogData.name} ↔ ${friendDogData.name}`);
-
-    res.json({
-      success: true,
-      message: `${myDogData.name} and ${friendDogData.name} are no longer friends`
-    });
-
-  } catch (error) {
-    console.error('❌ Error removing friend:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Internal server error' 
-    });
   }
-});
+);
 
 // Get friends list for a dog
-app.get('/api/dogs/:dogId/friends', authenticateToken, async (req, res) => {
+app.get("/api/dogs/:dogId/friends", authenticateToken, async (req, res) => {
   try {
     const { dogId } = req.params;
 
-    console.log('👥 Getting friends list for dog:', dogId);
+    console.log("👥 Getting friends list for dog:", dogId);
 
     // Verify dog exists and belongs to user
     const dogDoc = await dogsCollection.doc(dogId).get();
     if (!dogDoc.exists || dogDoc.data().owner_id !== req.user.userId) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        error: 'Dog not found or not authorized' 
+        error: "Dog not found or not authorized",
       });
     }
 
@@ -1090,47 +1298,55 @@ app.get('/api/dogs/:dogId/friends', authenticateToken, async (req, res) => {
       return res.json({
         success: true,
         friends: [],
-        friendsCount: 0
+        friendsCount: 0,
       });
     }
 
     // Fetch friend dog documents
-    const friendPromises = friendIds.map(friendId => dogsCollection.doc(friendId).get());
+    const friendPromises = friendIds.map((friendId) =>
+      dogsCollection.doc(friendId).get()
+    );
     const friendDocs = await Promise.all(friendPromises);
-    
+
     const friends = [];
-    friendDocs.forEach((friendDoc, index) => {
+    for (let i = 0; i < friendDocs.length; i++) {
+      const friendDoc = friendDocs[i];
       if (friendDoc.exists) {
         const friendData = friendDoc.data();
+        let photoUrl = friendData.photo_url || "";
+        const key = friendData.photo_key || extractS3KeyFromUrl(photoUrl);
+        if (key) {
+          const signed = await getSignedUrlForKey(key, 3600);
+          if (signed) photoUrl = signed;
+        }
         friends.push({
           id: friendDoc.id,
           name: friendData.name,
           breed: friendData.breed,
           age: friendData.age,
           emoji: friendData.emoji,
-          photo_url: friendData.photo_url,
+          photo_url: photoUrl,
           energy_level: friendData.energy_level,
           play_style: friendData.play_style || [],
-          owner_id: friendData.owner_id
+          owner_id: friendData.owner_id,
         });
       } else {
-        console.log(`Friend dog with ID ${friendIds[index]} not found in database`);
+        console.log(`Friend dog with ID ${friendIds[i]} not found in database`);
       }
-    });
+    }
 
     console.log(`✅ Found ${friends.length} friends for dog ${dogId}`);
 
     res.json({
       success: true,
       friends,
-      friendsCount: friends.length
+      friendsCount: friends.length,
     });
-
   } catch (error) {
-    console.error('❌ Error getting friends list:', error);
-    res.status(500).json({ 
+    console.error("❌ Error getting friends list:", error);
+    res.status(500).json({
       success: false,
-      error: 'Internal server error' 
+      error: "Internal server error",
     });
   }
 });
@@ -1138,171 +1354,184 @@ app.get('/api/dogs/:dogId/friends', authenticateToken, async (req, res) => {
 // FRIEND REQUEST ROUTES
 
 // Accept friend request
-app.post('/api/friend-requests/:requestId/accept', authenticateToken, async (req, res) => {
-  try {
-    const { requestId } = req.params;
+app.post(
+  "/api/friend-requests/:requestId/accept",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { requestId } = req.params;
 
-    console.log('✅ Processing friend request acceptance:', requestId);
+      console.log("✅ Processing friend request acceptance:", requestId);
 
-    // Get the friend request
-    const requestDoc = await friendRequestsCollection.doc(requestId).get();
-    if (!requestDoc.exists) {
-      return res.status(404).json({ 
+      // Get the friend request
+      const requestDoc = await friendRequestsCollection.doc(requestId).get();
+      if (!requestDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          error: "Friend request not found",
+        });
+      }
+
+      const requestData = requestDoc.data();
+
+      // Verify this request is for one of the user's dogs
+      const toDogDoc = await dogsCollection.doc(requestData.to_dog_id).get();
+      if (!toDogDoc.exists || toDogDoc.data().owner_id !== req.user.userId) {
+        return res.status(403).json({
+          success: false,
+          error: "Not authorized to accept this friend request",
+        });
+      }
+
+      // Verify request is still pending
+      if (requestData.status !== "pending") {
+        return res.status(400).json({
+          success: false,
+          error: "Friend request is no longer pending",
+        });
+      }
+
+      // Get both dog documents
+      const [fromDogDoc] = await Promise.all([
+        dogsCollection.doc(requestData.from_dog_id).get(),
+      ]);
+
+      if (!fromDogDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          error: "Requesting dog not found",
+        });
+      }
+
+      const fromDogData = fromDogDoc.data();
+      const toDogData = toDogDoc.data();
+
+      // Add each dog to the other's friends list
+      const fromDogFriends = fromDogData.friends || [];
+      const toDogFriends = toDogData.friends || [];
+
+      await Promise.all([
+        dogsCollection.doc(requestData.from_dog_id).update({
+          friends: [...new Set([...fromDogFriends, requestData.to_dog_id])],
+          updated_at: serverTimestamp(),
+        }),
+        dogsCollection.doc(requestData.to_dog_id).update({
+          friends: [...new Set([...toDogFriends, requestData.from_dog_id])],
+          updated_at: serverTimestamp(),
+        }),
+        friendRequestsCollection.doc(requestId).update({
+          status: "accepted",
+          accepted_at: serverTimestamp(),
+        }),
+      ]);
+
+      // Create notification for the requester
+      await notificationsCollection.add({
+        user_id: fromDogData.owner_id,
+        type: "friend_request_accepted",
+        title: "Friend Request Accepted! 🎉",
+        message: `${toDogData.name} accepted ${fromDogData.name}'s friend request!`,
+        data: {
+          friend_request_id: requestId,
+          from_dog_id: requestData.from_dog_id,
+          to_dog_id: requestData.to_dog_id,
+        },
+        read: false,
+        created_at: serverTimestamp(),
+      });
+
+      console.log(
+        `✅ Friend request accepted: ${fromDogData.name} ↔ ${toDogData.name}`
+      );
+
+      res.json({
+        success: true,
+        message: `${fromDogData.name} and ${toDogData.name} are now friends! 🐕❤️`,
+      });
+    } catch (error) {
+      console.error("❌ Error accepting friend request:", error);
+      res.status(500).json({
         success: false,
-        error: 'Friend request not found' 
+        error: "Internal server error",
       });
     }
-
-    const requestData = requestDoc.data();
-
-    // Verify this request is for one of the user's dogs
-    const toDogDoc = await dogsCollection.doc(requestData.to_dog_id).get();
-    if (!toDogDoc.exists || toDogDoc.data().owner_id !== req.user.userId) {
-      return res.status(403).json({ 
-        success: false,
-        error: 'Not authorized to accept this friend request' 
-      });
-    }
-
-    // Verify request is still pending
-    if (requestData.status !== 'pending') {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Friend request is no longer pending' 
-      });
-    }
-
-    // Get both dog documents
-    const [fromDogDoc] = await Promise.all([
-      dogsCollection.doc(requestData.from_dog_id).get()
-    ]);
-
-    if (!fromDogDoc.exists) {
-      return res.status(404).json({ 
-        success: false,
-        error: 'Requesting dog not found' 
-      });
-    }
-
-    const fromDogData = fromDogDoc.data();
-    const toDogData = toDogDoc.data();
-
-    // Add each dog to the other's friends list
-    const fromDogFriends = fromDogData.friends || [];
-    const toDogFriends = toDogData.friends || [];
-
-    await Promise.all([
-      dogsCollection.doc(requestData.from_dog_id).update({
-        friends: [...new Set([...fromDogFriends, requestData.to_dog_id])],
-        updated_at: serverTimestamp()
-      }),
-      dogsCollection.doc(requestData.to_dog_id).update({
-        friends: [...new Set([...toDogFriends, requestData.from_dog_id])],
-        updated_at: serverTimestamp()
-      }),
-      friendRequestsCollection.doc(requestId).update({
-        status: 'accepted',
-        accepted_at: serverTimestamp()
-      })
-    ]);
-
-    // Create notification for the requester
-    await notificationsCollection.add({
-      user_id: fromDogData.owner_id,
-      type: 'friend_request_accepted',
-      title: 'Friend Request Accepted! 🎉',
-      message: `${toDogData.name} accepted ${fromDogData.name}'s friend request!`,
-      data: {
-        friend_request_id: requestId,
-        from_dog_id: requestData.from_dog_id,
-        to_dog_id: requestData.to_dog_id
-      },
-      read: false,
-      created_at: serverTimestamp()
-    });
-
-    console.log(`✅ Friend request accepted: ${fromDogData.name} ↔ ${toDogData.name}`);
-
-    res.json({
-      success: true,
-      message: `${fromDogData.name} and ${toDogData.name} are now friends! 🐕❤️`
-    });
-
-  } catch (error) {
-    console.error('❌ Error accepting friend request:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Internal server error' 
-    });
   }
-});
+);
 
 // Decline friend request
-app.post('/api/friend-requests/:requestId/decline', authenticateToken, async (req, res) => {
-  try {
-    const { requestId } = req.params;
+app.post(
+  "/api/friend-requests/:requestId/decline",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { requestId } = req.params;
 
-    console.log('❌ Processing friend request decline:', requestId);
+      console.log("❌ Processing friend request decline:", requestId);
 
-    // Get the friend request
-    const requestDoc = await friendRequestsCollection.doc(requestId).get();
-    if (!requestDoc.exists) {
-      return res.status(404).json({ 
+      // Get the friend request
+      const requestDoc = await friendRequestsCollection.doc(requestId).get();
+      if (!requestDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          error: "Friend request not found",
+        });
+      }
+
+      const requestData = requestDoc.data();
+
+      // Verify this request is for one of the user's dogs
+      const toDogDoc = await dogsCollection.doc(requestData.to_dog_id).get();
+      if (!toDogDoc.exists || toDogDoc.data().owner_id !== req.user.userId) {
+        return res.status(403).json({
+          success: false,
+          error: "Not authorized to decline this friend request",
+        });
+      }
+
+      // Verify request is still pending
+      if (requestData.status !== "pending") {
+        return res.status(400).json({
+          success: false,
+          error: "Friend request is no longer pending",
+        });
+      }
+
+      // Update request status to declined
+      await friendRequestsCollection.doc(requestId).update({
+        status: "declined",
+        declined_at: serverTimestamp(),
+      });
+
+      console.log(`❌ Friend request declined: ${requestId}`);
+
+      res.json({
+        success: true,
+        message: "Friend request declined",
+      });
+    } catch (error) {
+      console.error("❌ Error declining friend request:", error);
+      res.status(500).json({
         success: false,
-        error: 'Friend request not found' 
+        error: "Internal server error",
       });
     }
-
-    const requestData = requestDoc.data();
-
-    // Verify this request is for one of the user's dogs
-    const toDogDoc = await dogsCollection.doc(requestData.to_dog_id).get();
-    if (!toDogDoc.exists || toDogDoc.data().owner_id !== req.user.userId) {
-      return res.status(403).json({ 
-        success: false,
-        error: 'Not authorized to decline this friend request' 
-      });
-    }
-
-    // Verify request is still pending
-    if (requestData.status !== 'pending') {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Friend request is no longer pending' 
-      });
-    }
-
-    // Update request status to declined
-    await friendRequestsCollection.doc(requestId).update({
-      status: 'declined',
-      declined_at: serverTimestamp()
-    });
-
-    console.log(`❌ Friend request declined: ${requestId}`);
-
-    res.json({
-      success: true,
-      message: 'Friend request declined'
-    });
-
-  } catch (error) {
-    console.error('❌ Error declining friend request:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Internal server error' 
-    });
   }
-});
+);
 
 // Get pending friend requests for user's dogs
-app.get('/api/friend-requests/pending', authenticateToken, async (req, res) => {
+app.get("/api/friend-requests/pending", authenticateToken, async (req, res) => {
   try {
-    console.log('📬 Getting pending friend requests for user:', req.user.userId);
+    console.log(
+      "📬 Getting pending friend requests for user:",
+      req.user.userId
+    );
 
     // Get all user's dogs
-    const userDogsSnapshot = await dogsCollection.where('owner_id', '==', req.user.userId).get();
+    const userDogsSnapshot = await dogsCollection
+      .where("owner_id", "==", req.user.userId)
+      .get();
     const userDogIds = [];
-    userDogsSnapshot.forEach(doc => {
+    userDogsSnapshot.forEach((doc) => {
       userDogIds.push(doc.id);
     });
 
@@ -1310,31 +1539,46 @@ app.get('/api/friend-requests/pending', authenticateToken, async (req, res) => {
       return res.json({
         success: true,
         requests: [],
-        count: 0
+        count: 0,
       });
     }
 
     // Get pending friend requests for user's dogs
     const requestsSnapshot = await friendRequestsCollection
-      .where('status', '==', 'pending')
+      .where("status", "==", "pending")
       .get();
 
     const pendingRequests = [];
-    
+
     for (const doc of requestsSnapshot.docs) {
       const requestData = doc.data();
-      
+
       // Only include requests where one of user's dogs is the recipient
       if (userDogIds.includes(requestData.to_dog_id)) {
         // Get the dog information for the request
         const [fromDogDoc, toDogDoc] = await Promise.all([
           dogsCollection.doc(requestData.from_dog_id).get(),
-          dogsCollection.doc(requestData.to_dog_id).get()
+          dogsCollection.doc(requestData.to_dog_id).get(),
         ]);
 
         if (fromDogDoc.exists && toDogDoc.exists) {
           const fromDogData = fromDogDoc.data();
           const toDogData = toDogDoc.data();
+
+          let fromPhoto = fromDogData.photo_url || "";
+          const fromKey =
+            fromDogData.photo_key || extractS3KeyFromUrl(fromPhoto);
+          if (fromKey) {
+            const signed = await getSignedUrlForKey(fromKey, 3600);
+            if (signed) fromPhoto = signed;
+          }
+
+          let toPhoto = toDogData.photo_url || "";
+          const toKey = toDogData.photo_key || extractS3KeyFromUrl(toPhoto);
+          if (toKey) {
+            const signed = await getSignedUrlForKey(toKey, 3600);
+            if (signed) toPhoto = signed;
+          }
 
           pendingRequests.push({
             id: doc.id,
@@ -1344,15 +1588,15 @@ app.get('/api/friend-requests/pending', authenticateToken, async (req, res) => {
               name: fromDogData.name,
               breed: fromDogData.breed,
               emoji: fromDogData.emoji,
-              photo_url: fromDogData.photo_url
+              photo_url: fromPhoto,
             },
             to_dog: {
               id: requestData.to_dog_id,
               name: toDogData.name,
               breed: toDogData.breed,
               emoji: toDogData.emoji,
-              photo_url: toDogData.photo_url
-            }
+              photo_url: toPhoto,
+            },
           });
         }
       }
@@ -1370,34 +1614,33 @@ app.get('/api/friend-requests/pending', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       requests: pendingRequests,
-      count: pendingRequests.length
+      count: pendingRequests.length,
     });
-
   } catch (error) {
-    console.error('❌ Error getting pending friend requests:', error);
-    res.status(500).json({ 
+    console.error("❌ Error getting pending friend requests:", error);
+    res.status(500).json({
       success: false,
-      error: 'Internal server error' 
+      error: "Internal server error",
     });
   }
 });
 
 // Get notifications for user
-app.get('/api/notifications', authenticateToken, async (req, res) => {
+app.get("/api/notifications", authenticateToken, async (req, res) => {
   try {
-    console.log('🔔 Getting notifications for user:', req.user.userId);
+    console.log("🔔 Getting notifications for user:", req.user.userId);
 
     const notificationsSnapshot = await notificationsCollection
-      .where('user_id', '==', req.user.userId)
-      .orderBy('created_at', 'desc')
+      .where("user_id", "==", req.user.userId)
+      .orderBy("created_at", "desc")
       .limit(50)
       .get();
 
     const notifications = [];
-    notificationsSnapshot.forEach(doc => {
+    notificationsSnapshot.forEach((doc) => {
       notifications.push({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
       });
     });
 
@@ -1406,51 +1649,58 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       notifications,
-      count: notifications.length
+      count: notifications.length,
     });
-
   } catch (error) {
-    console.error('❌ Error getting notifications:', error);
-    res.status(500).json({ 
+    console.error("❌ Error getting notifications:", error);
+    res.status(500).json({
       success: false,
-      error: 'Internal server error' 
+      error: "Internal server error",
     });
   }
 });
 
 // Mark notification as read
-app.put('/api/notifications/:notificationId/read', authenticateToken, async (req, res) => {
-  try {
-    const { notificationId } = req.params;
+app.put(
+  "/api/notifications/:notificationId/read",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { notificationId } = req.params;
 
-    // Verify notification exists and belongs to user
-    const notificationDoc = await notificationsCollection.doc(notificationId).get();
-    if (!notificationDoc.exists || notificationDoc.data().user_id !== req.user.userId) {
-      return res.status(404).json({ 
+      // Verify notification exists and belongs to user
+      const notificationDoc = await notificationsCollection
+        .doc(notificationId)
+        .get();
+      if (
+        !notificationDoc.exists ||
+        notificationDoc.data().user_id !== req.user.userId
+      ) {
+        return res.status(404).json({
+          success: false,
+          error: "Notification not found",
+        });
+      }
+
+      // Mark as read
+      await notificationsCollection.doc(notificationId).update({
+        read: true,
+        read_at: serverTimestamp(),
+      });
+
+      res.json({
+        success: true,
+        message: "Notification marked as read",
+      });
+    } catch (error) {
+      console.error("❌ Error marking notification as read:", error);
+      res.status(500).json({
         success: false,
-        error: 'Notification not found' 
+        error: "Internal server error",
       });
     }
-
-    // Mark as read
-    await notificationsCollection.doc(notificationId).update({
-      read: true,
-      read_at: serverTimestamp()
-    });
-
-    res.json({
-      success: true,
-      message: 'Notification marked as read'
-    });
-
-  } catch (error) {
-    console.error('❌ Error marking notification as read:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Internal server error' 
-    });
   }
-});
+);
 
 // Export the Express API for Vercel
 module.exports = app;
