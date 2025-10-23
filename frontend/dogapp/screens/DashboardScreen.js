@@ -15,6 +15,7 @@ import { useAuth } from "../contexts/AuthContext";
 import DogService from "../services/DogService";
 import CustomAlert, { DogImage } from "../components/CustomAlert";
 import { useAlerts } from "../components/useCustomAlert";
+import BottomNavigation from "../components/BottomNavigation";
 
 const { width } = Dimensions.get("window");
 
@@ -46,18 +47,15 @@ const DogCard = memo(({ dog, onPressProfile, onPressFriends }) => (
 ));
 
 export default function DashboardScreen({ navigation }) {
-  const { currentUser, logout } = useAuth();
+  const { currentUser } = useAuth();
   const [dogs, setDogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showMainMenu, setShowMainMenu] = useState(false);
-  const menuAnim = useRef(new Animated.Value(0)).current;
   const { alertState, hideAlert, showError, showSuccess, showInfo } =
     useAlerts();
   const [confirmDelete, setConfirmDelete] = useState({
     visible: false,
     dogId: null,
   });
-  const [confirmLogout, setConfirmLogout] = useState(false);
 
   // Reload dogs when screen comes into focus (when returning from other screens)
   useFocusEffect(
@@ -136,39 +134,6 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
-  const handleLogout = () => {
-    const performLogout = async () => {
-      try {
-        // animate menu close
-        closeMenu();
-        await logout();
-      } catch (error) {
-        console.error("Logout error:", error);
-        showError("Failed to logout. Please try again.");
-      }
-    };
-
-    if (Platform.OS === "web") {
-      // On web, we log out directly to avoid issues with the Alert component
-      // and provide a quicker user experience.
-      performLogout();
-    } else {
-      // On native, we show a confirmation dialog.
-      setConfirmLogout(true);
-    }
-  };
-
-  const confirmLogoutAction = async () => {
-    setConfirmLogout(false);
-    try {
-      closeMenu();
-      await logout();
-    } catch (error) {
-      console.error("Logout error:", error);
-      showError("Failed to logout. Please try again.");
-    }
-  };
-
   // Stable callbacks to prevent re-creation on each render
   const handleNavigateProfile = useCallback(
     (dog) => navigation.navigate("DogProfile", { dog }),
@@ -188,27 +153,6 @@ export default function DashboardScreen({ navigation }) {
       showInfo("Add a dog first to see friends");
     }
   }, [dogs, navigation, showInfo]);
-
-  // Animates menu closing then hides
-  const closeMenu = useCallback(() => {
-    Animated.timing(menuAnim, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => setShowMainMenu(false));
-  }, [menuAnim]);
-
-  // Animate menu when toggling
-  useEffect(() => {
-    if (showMainMenu) {
-      menuAnim.setValue(0);
-      Animated.timing(menuAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [showMainMenu]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -271,42 +215,8 @@ export default function DashboardScreen({ navigation }) {
         <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* Bottom navigation bar matching mock: Home, Account, Map, Friends, Chats */}
-      <View style={styles.navigationBar}>
-        <TouchableOpacity
-          style={[styles.navButton, styles.navButtonActive]}
-          onPress={() => navigation.navigate("Dashboard")}
-        >
-          <Text style={styles.navIcon}>🏠</Text>
-          <Text style={[styles.navLabel, styles.navLabelActive]}>Home</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.navButton} onPress={() => logout()}>
-          <Text style={styles.navIcon}>👤</Text>
-          <Text style={styles.navLabel}>Account</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navButton}
-          onPress={() => navigation.navigate("Map")}
-        >
-          <Text style={styles.navIcon}>📍</Text>
-          <Text style={styles.navLabel}>Map</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.navButton} onPress={openFriends}>
-          <Text style={styles.navIcon}>👥</Text>
-          <Text style={styles.navLabel}>Friends</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navButton}
-          onPress={() => navigation.navigate("Notifications")}
-        >
-          <Text style={styles.navIcon}>💬</Text>
-          <Text style={styles.navLabel}>Chats</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Bottom navigation bar - now using reusable component */}
+      <BottomNavigation navigation={navigation} activeRoute="Dashboard" />
 
       <CustomAlert
         visible={alertState.visible}
@@ -326,18 +236,6 @@ export default function DashboardScreen({ navigation }) {
         onClose={() => setConfirmDelete({ visible: false, dogId: null })}
         onConfirm={confirmDeleteDog}
         confirmText="Delete"
-        cancelText="Cancel"
-      />
-
-      <CustomAlert
-        visible={confirmLogout}
-        title="Logout"
-        message="Are you sure you want to logout?"
-        type="warning"
-        showCancel={true}
-        onClose={() => setConfirmLogout(false)}
-        onConfirm={confirmLogoutAction}
-        confirmText="Logout"
         cancelText="Cancel"
       />
     </SafeAreaView>
@@ -480,36 +378,5 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 100,
-  },
-  navigationBar: {
-    flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderTopWidth: 1,
-    borderTopColor: "#E0E0E0",
-    paddingBottom: Platform.OS === "ios" ? 24 : 12,
-  },
-  navButton: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  navButtonActive: {
-    borderBottomWidth: 3,
-    borderBottomColor: "#6B6B6B",
-  },
-  navIcon: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  navLabel: {
-    fontSize: 12,
-    color: "#999",
-    fontWeight: "500",
-  },
-  navLabelActive: {
-    color: "#333",
-    fontWeight: "600",
   },
 });

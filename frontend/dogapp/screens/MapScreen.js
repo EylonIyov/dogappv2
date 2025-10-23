@@ -10,16 +10,20 @@ import {
   ActivityIndicator,
   ScrollView,
   TextInput,
+  Modal,
 } from "react-native";
 import { GOOGLE_API_KEY } from "@env";
 import DogParkService from "../services/DogParkService";
 import { useAuth } from "../contexts/AuthContext";
 import DogService from "../services/DogService";
+import BottomNavigation from "../components/BottomNavigation";
+import CustomAlert, { DogImage } from "../components/CustomAlert";
+import { useAlerts } from "../components/useCustomAlert";
 
 const { width, height } = Dimensions.get("window");
 
 export default function MapScreen({ navigation }) {
-  const { currentUser, logout } = useAuth();
+  const { currentUser } = useAuth();
   const [parks, setParks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -31,6 +35,11 @@ export default function MapScreen({ navigation }) {
   const markersRef = useRef([]);
   const unsubscribeRefs = useRef({});
   const [dogs, setDogs] = useState([]);
+  const [showCheckInModal, setShowCheckInModal] = useState(false);
+  const [parkToCheckIn, setParkToCheckIn] = useState(null);
+  const [selectedDogsForCheckIn, setSelectedDogsForCheckIn] = useState([]);
+  const { alertState, hideAlert, showError, showSuccess, showInfo } =
+    useAlerts();
 
   useEffect(() => {
     loadGoogleMapsScript();
@@ -291,6 +300,223 @@ export default function MapScreen({ navigation }) {
     }
   };
 
+  const handleCheckInPress = (park) => {
+    if (dogs.length === 0) {
+      showError(
+        "You need to add at least one dog before checking in at parks.",
+        "No Dogs Found"
+      );
+      return;
+    }
+
+    // Get dogs already checked in at this park
+    const dogsAtPark = parksCheckedInDogs[park.id] || [];
+    const myCheckedInDogs = dogsAtPark.filter(
+      (dog) => dog.owner_id === currentUser?.uid
+    );
+
+    // Filter out dogs that are already checked in
+    const availableDogs = dogs.filter(
+      (dog) => !myCheckedInDogs.find((checkedIn) => checkedIn.id === dog.id)
+    );
+
+    if (availableDogs.length === 0) {
+      showInfo("All your dogs are already checked in at this park!");
+      return;
+    }
+
+    setParkToCheckIn(park);
+    setSelectedDogsForCheckIn([]);
+    setShowCheckInModal(true);
+  };
+
+  const handleCheckOutAll = async (park, e) => {
+    // Stop event propagation to prevent card click
+    if (e) {
+      e.stopPropagation();
+    }
+
+    // Get all my dogs checked in at this park
+    const dogsAtPark = parksCheckedInDogs[park.id] || [];
+    const myCheckedInDogs = dogsAtPark.filter(
+      (dog) => dog.owner_id === currentUser?.uid
+    );
+
+    if (myCheckedInDogs.length === 0) {
+      showInfo("You don't have any dogs checked in at this park.");
+      return;
+    }
+
+    try {
+      const dogIds = myCheckedInDogs.map((dog) => dog.id);
+      const result = await DogParkService.checkOutDogs(park.id, dogIds);
+
+      if (result.success) {
+        showSuccess(
+          `${myCheckedInDogs.length} dog(s) checked out successfully! 👋`
+        );
+      } else {
+        showError(result.error || "Failed to check out dogs");
+      }
+    } catch (error) {
+      console.error("Error during check-out:", error);
+      showError("Failed to check out dogs. Please try again.");
+    }
+  };
+
+  const toggleDogSelection = (dog) => {
+    setSelectedDogsForCheckIn((prev) => {
+      const isSelected = prev.find((d) => d.id === dog.id);
+      if (isSelected) {
+        return prev.filter((d) => d.id !== dog.id);
+      } else {
+        return [...prev, dog];
+      }
+    });
+  };
+
+  const confirmCheckIn = async () => {
+    if (selectedDogsForCheckIn.length === 0) {
+      showError(
+        "Please select at least one dog to check in.",
+        "No Dogs Selected"
+      );
+      return;
+    }
+
+    try {
+      const dogIds = selectedDogsForCheckIn.map((dog) => dog.id);
+      const result = await DogParkService.checkInDogs(parkToCheckIn.id, dogIds);
+
+      if (result.success) {
+        const parkToNavigate = parkToCheckIn;
+        setShowCheckInModal(false);
+        setSelectedDogsForCheckIn([]);
+        setParkToCheckIn(null);
+
+        // Navigate to the park screen (use 'DogParks' not 'DogParksScreen')
+        navigation.navigate("DogParks", { park: parkToNavigate });
+
+        // Show success message after navigation
+        setTimeout(() => {
+          showSuccess(
+            `${selectedDogsForCheckIn.length} dog(s) checked in successfully! 🎉`
+          );
+        }, 500);
+      } else {
+        showError(result.error || "Failed to check in dogs");
+      }
+    } catch (error) {
+      console.error("Error during check-in:", error);
+      showError("Failed to check in dogs. Please try again.");
+    }
+  };
+
+  const CheckInModal = () => {
+    if (!showCheckInModal || !parkToCheckIn) return null;
+
+    // Get dogs already checked in at this park
+    const dogsAtPark = parksCheckedInDogs[parkToCheckIn.id] || [];
+    const myCheckedInDogs = dogsAtPark.filter(
+      (dog) => dog.owner_id === currentUser?.uid
+    );
+
+    // Filter out dogs that are already checked in
+    const availableDogs = dogs.filter(
+      (dog) => !myCheckedInDogs.find((checkedIn) => checkedIn.id === dog.id)
+    );
+
+    return (
+      <Modal
+        transparent={true}
+        visible={showCheckInModal}
+        animationType="fade"
+        onRequestClose={() => setShowCheckInModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                Check In to {parkToCheckIn.name}
+              </Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setShowCheckInModal(false)}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>Select dogs to check in:</Text>
+
+            <ScrollView
+              style={styles.dogsList}
+              showsVerticalScrollIndicator={false}
+            >
+              {availableDogs.map((dog) => {
+                const isSelected = selectedDogsForCheckIn.find(
+                  (d) => d.id === dog.id
+                );
+                return (
+                  <TouchableOpacity
+                    key={dog.id}
+                    style={[
+                      styles.dogItem,
+                      isSelected && styles.dogItemSelected,
+                    ]}
+                    onPress={() => toggleDogSelection(dog)}
+                  >
+                    <View style={styles.dogItemContent}>
+                      <DogImage
+                        source={{ uri: dog.photo_url }}
+                        style={styles.dogPhoto}
+                        placeholder={dog.emoji || "🐕"}
+                      />
+                      <View style={styles.dogItemInfo}>
+                        <Text style={styles.dogItemName}>{dog.name}</Text>
+                        <Text style={styles.dogItemBreed}>{dog.breed}</Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.checkbox,
+                          isSelected && styles.checkboxSelected,
+                        ]}
+                      >
+                        {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowCheckInModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.confirmButton,
+                  selectedDogsForCheckIn.length === 0 &&
+                    styles.confirmButtonDisabled,
+                ]}
+                onPress={confirmCheckIn}
+                disabled={selectedDogsForCheckIn.length === 0}
+              >
+                <Text style={styles.confirmButtonText}>
+                  Confirm ({selectedDogsForCheckIn.length})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -375,6 +601,13 @@ export default function MapScreen({ navigation }) {
             const distance = calculateDistance(park);
             const dogsCount = parksCheckedInDogs[park.id]?.length || 0;
 
+            // Check if user has dogs checked in at this park
+            const dogsAtPark = parksCheckedInDogs[park.id] || [];
+            const myCheckedInDogs = dogsAtPark.filter(
+              (dog) => dog.owner_id === currentUser?.uid
+            );
+            const hasMyDogsCheckedIn = myCheckedInDogs.length > 0;
+
             return (
               <TouchableOpacity
                 key={park.id}
@@ -421,47 +654,47 @@ export default function MapScreen({ navigation }) {
                     </View>
                   </View>
                 </View>
+
+                <View style={styles.parkActions}>
+                  <TouchableOpacity
+                    style={styles.checkInButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleCheckInPress(park);
+                    }}
+                  >
+                    <Text style={styles.checkInButtonText}>Check In</Text>
+                  </TouchableOpacity>
+
+                  {hasMyDogsCheckedIn && (
+                    <TouchableOpacity
+                      style={styles.checkOutAllButton}
+                      onPress={(e) => handleCheckOutAll(park, e)}
+                    >
+                      <Text style={styles.checkOutAllButtonText}>
+                        Check Out All ({myCheckedInDogs.length})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
       </View>
 
-      <View style={styles.navigationBar}>
-        <TouchableOpacity
-          style={styles.navButton}
-          onPress={() => navigation.navigate("Dashboard")}
-        >
-          <Text style={styles.navIcon}>🏠</Text>
-          <Text style={styles.navLabel}>Home</Text>
-        </TouchableOpacity>
+      <CheckInModal />
 
-        <TouchableOpacity style={styles.navButton} onPress={() => logout()}>
-          <Text style={styles.navIcon}>👤</Text>
-          <Text style={styles.navLabel}>Account</Text>
-        </TouchableOpacity>
+      <CustomAlert
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onClose={hideAlert}
+        confirmText={alertState.confirmText}
+      />
 
-        <TouchableOpacity
-          style={[styles.navButton, styles.navButtonActive]}
-          onPress={() => {}}
-        >
-          <Text style={styles.navIcon}>📍</Text>
-          <Text style={[styles.navLabel, styles.navLabelActive]}>Map</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.navButton} onPress={openFriends}>
-          <Text style={styles.navIcon}>👥</Text>
-          <Text style={styles.navLabel}>Friends</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navButton}
-          onPress={() => navigation.navigate("Notifications")}
-        >
-          <Text style={styles.navIcon}>💬</Text>
-          <Text style={styles.navLabel}>Chats</Text>
-        </TouchableOpacity>
-      </View>
+      <BottomNavigation navigation={navigation} activeRoute="Map" />
     </SafeAreaView>
   );
 }
@@ -691,35 +924,160 @@ const styles = StyleSheet.create({
     color: "#FFF",
     fontWeight: "500",
   },
-  navigationBar: {
-    flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderTopWidth: 1,
-    borderTopColor: "#E0E0E0",
-    paddingBottom: Platform.OS === "ios" ? 24 : 12,
+  checkInButton: {
+    backgroundColor: "#4CD964",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignSelf: "center",
+    marginTop: 8,
   },
-  navButton: {
-    flex: 1,
+  checkInButtonText: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#FFF",
+  },
+  parkActions: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  checkOutAllButton: {
+    backgroundColor: "#FF6B6B",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignSelf: "center",
+    marginTop: 8,
+  },
+  checkOutAllButtonText: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#FFF",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    width: "80%",
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  modalCloseButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#E0E0E0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCloseText: {
+    fontSize: 18,
+    color: "#333",
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    color: "#666",
+    marginBottom: 12,
+  },
+  dogsList: {
+    maxHeight: 200,
+  },
+  dogItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F5F5F5",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  dogItemSelected: {
+    backgroundColor: "#D3EEDD",
+  },
+  dogItemContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  dogPhoto: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  dogItemInfo: {
+    flex: 1,
+  },
+  dogItemName: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  dogItemBreed: {
+    fontSize: 14,
+    color: "#666",
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#CCC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxSelected: {
+    borderColor: "#4CD964",
+    backgroundColor: "#4CD964",
+  },
+  checkmark: {
+    fontSize: 16,
+    color: "#FFF",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
+  },
+  cancelButton: {
+    backgroundColor: "#E0E0E0",
+    borderRadius: 8,
+    paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  navButtonActive: {
-    borderBottomWidth: 3,
-    borderBottomColor: "#6B6B6B",
-  },
-  navIcon: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  navLabel: {
-    fontSize: 12,
-    color: "#999",
-    fontWeight: "500",
-  },
-  navLabelActive: {
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: "bold",
     color: "#333",
-    fontWeight: "600",
+  },
+  confirmButton: {
+    backgroundColor: "#4CD964",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  confirmButtonDisabled: {
+    backgroundColor: "#A5D6A7",
+  },
+  confirmButtonText: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#FFF",
   },
 });

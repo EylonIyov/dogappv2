@@ -31,8 +31,11 @@
       "dest": "/index.html"
     }
   ],
-  "buildCommand": "expo export --platform web",
+  "buildCommand": "NODE_ENV=production expo export --platform web",
   "outputDirectory": "dist",
   "installCommand": "npm install",
-  "framework": null
+  "framework": null,
+  "env": {
+    "NODE_ENV": "production"
+  }
 }

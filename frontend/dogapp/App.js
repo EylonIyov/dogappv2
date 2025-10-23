@@ -17,6 +17,7 @@ import DogParksScreen from "./screens/DogParksScreen";
 import CheckInConfirmationScreen from "./screens/CheckInConfirmationScreen";
 import NotificationsScreen from "./screens/NotificationsScreen";
 import DogFriendsScreen from "./screens/DogFriendsScreen";
+import AccountScreen from "./screens/AccountScreen";
 
 const Stack = createStackNavigator();
 
@@ -103,6 +104,13 @@ function AppNavigator() {
               }}
             />
             <Stack.Screen
+              name="Account"
+              component={AccountScreen}
+              options={{
+                title: "👤 Account Settings",
+              }}
+            />
+            <Stack.Screen
               name="AddDog"
               component={AddDogScreen}
               options={{
@@ -125,7 +133,7 @@ function AppNavigator() {
               name="DogParks"
               component={DogParksScreen}
               options={{
-                title: "🏞️ Dog Parks",
+                headerShown: false,
               }}
             />
             <Stack.Screen

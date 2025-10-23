@@ -43,44 +43,144 @@ const isValidImageUrl = (url) => {
 // Enhanced Image component with better error handling and caching
 const DogImage = ({ source, style, placeholder = "🐕", ...props }) => {
   const [hasError, setHasError] = React.useState(false);
+  const [imageKey, setImageKey] = React.useState(0);
 
   // Check if URL is valid
   const isValid = source?.uri && isValidImageUrl(source.uri);
 
+  // Log the full URL for debugging
+  React.useEffect(() => {
+    if (source?.uri) {
+      console.log("🖼️ DogImage received URL:", source.uri);
+      // Check if URL has expired by looking at the timestamp
+      try {
+        const url = new URL(source.uri);
+        const dateParam = url.searchParams.get("X-Amz-Date");
+        const expiresParam = url.searchParams.get("X-Amz-Expires");
+        if (dateParam && expiresParam) {
+          const year = dateParam.substring(0, 4);
+          const month = dateParam.substring(4, 6);
+          const day = dateParam.substring(6, 8);
+          const signDate = new Date(`${year}-${month}-${day}`);
+          const expiresSeconds = parseInt(expiresParam);
+          const expiryDate = new Date(
+            signDate.getTime() + expiresSeconds * 1000
+          );
+          const now = new Date();
+          console.log(`📅 URL signed on: ${signDate.toLocaleString()}`);
+          console.log(`⏰ URL expires on: ${expiryDate.toLocaleString()}`);
+          console.log(`⏱️ Current time: ${now.toLocaleString()}`);
+          console.log(
+            `${
+              now > expiryDate ? "❌ URL HAS EXPIRED" : "✅ URL is still valid"
+            }`
+          );
+        }
+      } catch (e) {
+        console.log("⚠️ Could not parse URL date");
+      }
+    }
+  }, [source?.uri]);
+
   if (!isValid || hasError) {
     return (
-      <Text
+      <View
         style={[
           style,
           {
-            textAlign: "center",
-            textAlignVertical: "center",
-            lineHeight: style?.height || 50,
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: "#E0E0E0",
           },
         ]}
       >
-        {placeholder}
-      </Text>
+        <Text
+          style={{
+            fontSize: style?.width ? style.width * 0.4 : 28,
+            textAlign: "center",
+          }}
+        >
+          {placeholder}
+        </Text>
+      </View>
     );
   }
 
+  // For web platform, use native img element for better S3 URL support
+  if (Platform.OS === "web") {
+    // Create a container div to hold the img
+    const containerStyle = {
+      width: style?.width || 50,
+      height: style?.height || 50,
+      borderRadius: style?.borderRadius || 0,
+      overflow: "hidden",
+      backgroundColor: "#E0E0E0",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    };
+
+    const imgStyle = {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      display: hasError ? "none" : "block",
+    };
+
+    return (
+      <div style={containerStyle}>
+        <img
+          key={imageKey}
+          src={source.uri}
+          style={imgStyle}
+          alt={placeholder}
+          onLoad={() => {
+            console.log("✅ Image loaded successfully");
+            setHasError(false);
+          }}
+          onError={(error) => {
+            console.error(
+              "❌ Image failed to load:",
+              source.uri?.substring(0, 80)
+            );
+            console.error("Full error:", error);
+            // Try to test the URL directly
+            console.log(
+              "🔗 Try opening this URL directly in browser:",
+              source.uri
+            );
+            setHasError(true);
+          }}
+        />
+        {hasError && (
+          <Text
+            style={{
+              fontSize: containerStyle.width * 0.4,
+              textAlign: "center",
+            }}
+          >
+            {placeholder}
+          </Text>
+        )}
+      </div>
+    );
+  }
+
+  // For native platforms, use expo-image
   return (
     <Image
+      key={imageKey}
       source={source}
       style={style}
       contentFit="cover"
-      cachePolicy="memory-disk" // Cache images to reduce re-fetching
+      cachePolicy="memory-disk"
       placeholder={placeholder}
       transition={200}
       onError={(error) => {
-        console.log(
-          "❌ Image load error for:",
-          source.uri?.substring(0, 50) + "..."
-        );
+        console.log("❌ Image load error");
         setHasError(true);
       }}
       onLoad={() => {
-        console.log("✅ Image loaded successfully");
         setHasError(false);
       }}
       {...props}

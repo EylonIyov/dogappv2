@@ -22,17 +22,39 @@ const dogParksCollection = db.collection("test_dogparks");
 const friendRequestsCollection = db.collection("friend-requests");
 const notificationsCollection = db.collection("notifications");
 
-// CORS configuration
+// CORS configuration - Allow all origins for testing
 app.use(
   cors({
-    origin: [
-      "https://dogapp-frontend.vercel.app", // Update this to your actual frontend Vercel URL
-      "http://localhost:3000",
-      "https://localhost:3000",
-    ],
-    credentials: true,
+    origin: "*", // Allow all origins
+    credentials: false, // Set to false when using wildcard origin
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    optionsSuccessStatus: 200,
   })
 );
+
+// Add additional CORS middleware for Vercel preview deployments
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  // Allow all Vercel deployments (*.vercel.app)
+  if (origin && origin.match(/^https?:\/\/.*\.vercel\.app$/)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, DELETE, OPTIONS"
+    );
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  }
+
+  // Handle preflight requests
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
 
 // Middleware
 app.use(express.json({ limit: "10mb" }));
@@ -83,44 +105,6 @@ const formatAge = (age) => {
   if (isNaN(parsedAge)) return 0;
   return Math.max(0, Math.min(30, parsedAge));
 };
-
-// Helper to extract S3 key from a presigned URL if possible
-function extractS3KeyFromUrl(url) {
-  try {
-    if (!url || typeof url !== "string" || url.trim() === "") {
-      console.log("⚠️ extractS3KeyFromUrl: Empty or invalid URL provided");
-      return null;
-    }
-
-    // Clean the URL
-    const cleanUrl = url.trim();
-
-    const u = new URL(cleanUrl);
-    if (u.hostname.includes("amazonaws.com") || u.hostname.includes("s3")) {
-      // Path-style URL: /DogPictures/... (strip leading slash)
-      const path = u.pathname.startsWith("/")
-        ? u.pathname.slice(1)
-        : u.pathname;
-
-      // Ignore empty path or root path
-      if (
-        path &&
-        !path.endsWith("/") &&
-        path !== "DogPictures" &&
-        path !== "DogPictures/"
-      ) {
-        const decodedPath = decodeURIComponent(path);
-        console.log(`✅ Extracted S3 key from URL: ${decodedPath}`);
-        return decodedPath;
-      }
-    }
-    console.log("⚠️ extractS3KeyFromUrl: Could not extract valid key from URL");
-    return null;
-  } catch (error) {
-    console.log("⚠️ extractS3KeyFromUrl: Error parsing URL:", error.message);
-    return null;
-  }
-}
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -776,16 +760,38 @@ app.get("/api/dog-parks/:parkId/dogs", authenticateToken, async (req, res) => {
     const dogDocs = await Promise.all(dogPromises);
 
     const checkedInDogs = [];
-    for (let i = 0; i < dogDocs.length; i++) {
-      const dogDoc = dogDocs[i];
+    for (let index = 0; index < dogDocs.length; index++) {
+      const dogDoc = dogDocs[index];
       if (dogDoc.exists) {
         const dogData = dogDoc.data();
-        let photoUrl = dogData.photo_url || "";
-        const key = dogData.photo_key || extractS3KeyFromUrl(photoUrl);
-        if (key) {
-          const signed = await getSignedUrlForKey(key, 3600);
-          if (signed) photoUrl = signed;
+
+        // Refresh photo URL with fresh presigned URL
+        let photoUrl = dogData.photo_url;
+        if (photoUrl && photoUrl.includes("s3")) {
+          try {
+            // Extract S3 key from URL
+            const urlParts = photoUrl.split("amazonaws.com/");
+            if (urlParts.length > 1) {
+              const key = urlParts[1].split("?")[0];
+              console.log(
+                `🔄 Refreshing S3 URL for dog ${
+                  dogDoc.id
+                }, key: ${key.substring(0, 50)}...`
+              );
+              const signedUrl = await getSignedUrlForKey(key, 604800); // 7 days
+              if (signedUrl) {
+                photoUrl = signedUrl;
+                console.log(`✅ Refreshed photo URL for ${dogData.name}`);
+              }
+            }
+          } catch (urlError) {
+            console.warn(
+              `⚠️ Could not refresh photo URL for dog ${dogDoc.id}:`,
+              urlError.message
+            );
+          }
         }
+
         checkedInDogs.push({
           id: dogDoc.id,
           name: dogData.name,
@@ -798,7 +804,9 @@ app.get("/api/dog-parks/:parkId/dogs", authenticateToken, async (req, res) => {
           friends: dogData.friends || [],
         });
       } else {
-        console.log(`Dog with ID ${checkedInDogIds[i]} not found in database`);
+        console.log(
+          `Dog with ID ${checkedInDogIds[index]} not found in database`
+        );
       }
     }
 
@@ -821,66 +829,18 @@ app.get("/api/dog-parks/:parkId/dogs", authenticateToken, async (req, res) => {
 // Get all dogs for the authenticated user
 app.get("/api/dogs", authenticateToken, async (req, res) => {
   try {
-    console.log("🐕 Fetching dogs for user:", req.user.userId);
     const dogsSnapshot = await dogsCollection
       .where("owner_id", "==", req.user.userId)
       .get();
 
     const userDogs = [];
-    for (const doc of dogsSnapshot.docs) {
-      const data = doc.data();
-      let photoUrl = data.photo_url || "";
+    dogsSnapshot.forEach((doc) => {
+      userDogs.push({
+        id: doc.id,
+        ...doc.data(),
+      });
+    });
 
-      console.log(
-        `🐕 Processing dog: ${
-          data.name
-        }, has photo_key: ${!!data.photo_key}, photo_url length: ${
-          photoUrl.length
-        }`
-      );
-
-      // Priority 1: Use stored photo_key if available
-      if (data.photo_key) {
-        console.log(`  Using photo_key: ${data.photo_key}`);
-        const signed = await getSignedUrlForKey(data.photo_key, 604800); // 7 days
-        if (signed) {
-          photoUrl = signed;
-          console.log(`  ✅ Generated fresh signed URL`);
-        } else {
-          console.log(`  ❌ Failed to generate signed URL from key`);
-        }
-      }
-      // Priority 2: Try extracting key from existing URL
-      else if (photoUrl) {
-        const key = extractS3KeyFromUrl(photoUrl);
-        if (key) {
-          console.log(`  Extracted key from URL: ${key}`);
-          const signed = await getSignedUrlForKey(key, 604800);
-          if (signed) {
-            photoUrl = signed;
-            console.log(`  ✅ Generated fresh signed URL from extracted key`);
-            // Update dog with the extracted key for future use
-            await dogsCollection.doc(doc.id).update({
-              photo_key: key,
-              updated_at: serverTimestamp(),
-            });
-            console.log(`  💾 Saved photo_key to database for future use`);
-          }
-        } else {
-          console.log(
-            `  ⚠️ Could not extract key from photo_url, keeping original`
-          );
-        }
-      } else {
-        console.log(`  ℹ️ No photo for this dog`);
-      }
-
-      userDogs.push({ id: doc.id, ...data, photo_url: photoUrl });
-    }
-
-    console.log(
-      `✅ Returning ${userDogs.length} dogs with refreshed photo URLs`
-    );
     res.json({ dogs: userDogs });
   } catch (error) {
     console.error("Get dogs error:", error);
@@ -1019,10 +979,8 @@ app.post(
 
       // Validate image file
       const validation = validateImageFile(req.file);
-      if (!validation.isValid && !validation.valid) {
-        // support both shapes
-        const errMsg = validation.error || "Invalid image";
-        return res.status(400).json({ error: errMsg });
+      if (!validation.isValid) {
+        return res.status(400).json({ error: validation.error });
       }
 
       // Upload to S3
@@ -1034,14 +992,13 @@ app.post(
 
       // Update dog with photo URL
       await dogsCollection.doc(dogId).update({
-        photo_key: uploadResult.key,
-        photo_url: uploadResult.photoUrl,
+        photo_url: uploadResult.url,
         updated_at: serverTimestamp(),
       });
 
       res.json({
         success: true,
-        photo_url: uploadResult.photoUrl,
+        photo_url: uploadResult.url,
         message: "Photo uploaded successfully",
       });
     } catch (error) {
@@ -1309,31 +1266,26 @@ app.get("/api/dogs/:dogId/friends", authenticateToken, async (req, res) => {
     const friendDocs = await Promise.all(friendPromises);
 
     const friends = [];
-    for (let i = 0; i < friendDocs.length; i++) {
-      const friendDoc = friendDocs[i];
+    friendDocs.forEach((friendDoc, index) => {
       if (friendDoc.exists) {
         const friendData = friendDoc.data();
-        let photoUrl = friendData.photo_url || "";
-        const key = friendData.photo_key || extractS3KeyFromUrl(photoUrl);
-        if (key) {
-          const signed = await getSignedUrlForKey(key, 3600);
-          if (signed) photoUrl = signed;
-        }
         friends.push({
           id: friendDoc.id,
           name: friendData.name,
           breed: friendData.breed,
           age: friendData.age,
           emoji: friendData.emoji,
-          photo_url: photoUrl,
+          photo_url: friendData.photo_url,
           energy_level: friendData.energy_level,
           play_style: friendData.play_style || [],
           owner_id: friendData.owner_id,
         });
       } else {
-        console.log(`Friend dog with ID ${friendIds[i]} not found in database`);
+        console.log(
+          `Friend dog with ID ${friendIds[index]} not found in database`
+        );
       }
-    }
+    });
 
     console.log(`✅ Found ${friends.length} friends for dog ${dogId}`);
 
@@ -1565,21 +1517,6 @@ app.get("/api/friend-requests/pending", authenticateToken, async (req, res) => {
           const fromDogData = fromDogDoc.data();
           const toDogData = toDogDoc.data();
 
-          let fromPhoto = fromDogData.photo_url || "";
-          const fromKey =
-            fromDogData.photo_key || extractS3KeyFromUrl(fromPhoto);
-          if (fromKey) {
-            const signed = await getSignedUrlForKey(fromKey, 3600);
-            if (signed) fromPhoto = signed;
-          }
-
-          let toPhoto = toDogData.photo_url || "";
-          const toKey = toDogData.photo_key || extractS3KeyFromUrl(toPhoto);
-          if (toKey) {
-            const signed = await getSignedUrlForKey(toKey, 3600);
-            if (signed) toPhoto = signed;
-          }
-
           pendingRequests.push({
             id: doc.id,
             ...requestData,
@@ -1588,14 +1525,14 @@ app.get("/api/friend-requests/pending", authenticateToken, async (req, res) => {
               name: fromDogData.name,
               breed: fromDogData.breed,
               emoji: fromDogData.emoji,
-              photo_url: fromPhoto,
+              photo_url: fromDogData.photo_url,
             },
             to_dog: {
               id: requestData.to_dog_id,
               name: toDogData.name,
               breed: toDogData.breed,
               emoji: toDogData.emoji,
-              photo_url: toPhoto,
+              photo_url: toDogData.photo_url,
             },
           });
         }

@@ -1,6 +1,7 @@
 const express = require('express');
 const { dogParksCollection, dogsCollection, serverTimestamp } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const { getSignedUrlForKey } = require('../dogUploadPicture');
 
 const router = express.Router();
 
@@ -300,9 +301,42 @@ router.get('/:parkId/dogs', authenticateToken, async (req, res) => {
     const dogDocs = await Promise.all(dogPromises);
     
     const checkedInDogs = [];
-    dogDocs.forEach((dogDoc, index) => {
+    for (let index = 0; index < dogDocs.length; index++) {
+      const dogDoc = dogDocs[index];
       if (dogDoc.exists) {
         const dogData = dogDoc.data();
+        
+        // Refresh photo URL with fresh presigned URL
+        let photoUrl = dogData.photo_url;
+        if (dogData.photo_key) {
+          // Use photo_key if available (preferred method)
+          try {
+            const signedUrl = await getSignedUrlForKey(dogData.photo_key, 604800); // 7 days
+            if (signedUrl) {
+              photoUrl = signedUrl;
+              console.log(`✅ Refreshed photo URL for ${dogData.name} using photo_key`);
+            }
+          } catch (keyError) {
+            console.warn(`⚠️ Could not refresh photo URL using photo_key for dog ${dogDoc.id}:`, keyError.message);
+          }
+        } else if (photoUrl && photoUrl.includes('s3')) {
+          // Fallback: Extract key from existing URL
+          try {
+            const urlParts = photoUrl.split('amazonaws.com/');
+            if (urlParts.length > 1) {
+              const key = urlParts[1].split('?')[0];
+              console.log(`🔄 Refreshing S3 URL for dog ${dogDoc.id}, key: ${key.substring(0, 50)}...`);
+              const signedUrl = await getSignedUrlForKey(key, 604800); // 7 days
+              if (signedUrl) {
+                photoUrl = signedUrl;
+                console.log(`✅ Refreshed photo URL for ${dogData.name}`);
+              }
+            }
+          } catch (urlError) {
+            console.warn(`⚠️ Could not refresh photo URL for dog ${dogDoc.id}:`, urlError.message);
+          }
+        }
+        
         checkedInDogs.push({
           id: dogDoc.id,
           name: dogData.name,
@@ -311,13 +345,13 @@ router.get('/:parkId/dogs', authenticateToken, async (req, res) => {
           emoji: dogData.emoji,
           owner_id: dogData.owner_id,
           energy_level: dogData.energy_level,
-          photo_url: dogData.photo_url,
+          photo_url: photoUrl,
           friends: dogData.friends || []
         });
       } else {
         console.log(`Dog with ID ${checkedInDogIds[index]} not found in database`);
       }
-    });
+    }
 
     console.log('✅ Found', checkedInDogs.length, 'dogs checked into park');
     res.json({
