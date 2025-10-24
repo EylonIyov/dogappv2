@@ -12,7 +12,6 @@ export default function BottomNavigation({ navigation, activeRoute }) {
     { name: "Dashboard", icon: "🏠", label: "Home", route: "Dashboard" },
     { name: "Account", icon: "👤", label: "Account", route: "Account" },
     { name: "Map", icon: "📍", label: "Map", route: "Map" },
-    { name: "Friends", icon: "👥", label: "Friends", route: "DogFriends" },
     {
       name: "Notifications",
       icon: "🔔",
@@ -22,13 +21,7 @@ export default function BottomNavigation({ navigation, activeRoute }) {
   ];
 
   const handleNavigation = (item) => {
-    if (item.route === "DogFriends") {
-      // Friends requires a dog parameter, so we'll need to handle this specially
-      // For now, navigate to Dashboard if no dog is available
-      navigation.navigate(item.route);
-    } else {
-      navigation.navigate(item.route);
-    }
+    navigation.navigate(item.route);
   };
 
   return (

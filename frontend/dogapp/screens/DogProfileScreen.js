@@ -3,130 +3,116 @@ import {
   StyleSheet,
   Text,
   View,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  Platform,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import CustomAlert, { DogImage } from "../components/CustomAlert";
 import { useAlerts } from "../components/useCustomAlert";
+import BottomNavigation from "../components/BottomNavigation";
 
 export default function DogProfileScreen({ route, navigation }) {
   const { dog } = route.params;
-  const { alertState, hideAlert, showError, showSuccess } = useAlerts();
-
-  const InfoCard = ({ icon, title, value, defaultText = "Not specified" }) => (
-    <View style={styles.infoCard}>
-      <View style={styles.infoHeader}>
-        <Text style={styles.infoIcon}>{icon}</Text>
-        <Text style={styles.infoTitle}>{title}</Text>
-      </View>
-      <Text style={styles.infoValue}>{value || defaultText}</Text>
-    </View>
-  );
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "Unknown";
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
-  };
+  const { alertState, hideAlert } = useAlerts();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header Section */}
-        <View style={styles.header}>
-          <DogImage
-            source={{ uri: dog.photo_url }}
-            style={styles.dogProfilePhoto}
-            placeholder={dog.emoji || "🐕"}
-          />
-          <Text style={styles.dogName}>{dog.name}</Text>
-          <Text style={styles.dogBreed}>{dog.breed}</Text>
-          <Text style={styles.addedDate}>
-            Added to pack on {formatDate(dog.created_at || dog.createdAt)}
-          </Text>
-        </View>
+        {/* Back button */}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>←</Text>
+        </TouchableOpacity>
 
-        {/* Basic Info Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Basic Information</Text>
-          <View style={styles.infoGrid}>
-            <InfoCard
-              icon="🎂"
-              title="Age"
-              value={dog.age ? `${dog.age} years old` : null}
+        {/* Three dots menu */}
+        <TouchableOpacity
+          style={styles.menuButton}
+          onPress={() => navigation.navigate("EditDog", { dog })}
+        >
+          <View style={styles.menuDot} />
+          <View style={styles.menuDot} />
+          <View style={styles.menuDot} />
+        </TouchableOpacity>
+
+        {/* Header with dog image */}
+        <View style={styles.header}>
+          <View style={styles.imageContainer}>
+            <DogImage
+              source={{ uri: dog.photo_url }}
+              style={styles.dogImage}
+              placeholder={dog.emoji || "🐕"}
             />
-            <InfoCard icon="⚡" title="Energy Level" value={dog.energyLevel} />
           </View>
         </View>
 
-        {/* Play Style Section */}
-        {dog.playStyle && dog.playStyle.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Play Style</Text>
-            <View style={styles.textCard}>
-              <Text style={styles.cardIcon}>🎭</Text>
-              <Text style={styles.cardText}>
-                {Array.isArray(dog.playStyle)
-                  ? dog.playStyle.join(", ")
-                  : dog.playStyle}
+        {/* Content section with white background */}
+        <View style={styles.contentSection}>
+          {/* Dog name */}
+          <Text style={styles.dogName}>{dog.name}</Text>
+
+          {/* Info grid - BREED, AGE, SIZE, SEX */}
+          <View style={styles.infoGrid}>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>BREED</Text>
+              <Text style={styles.infoValue}>
+                {dog.breed || "Not specified"}
+              </Text>
+            </View>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>AGE</Text>
+              <Text style={styles.infoValue}>
+                {dog.age
+                  ? `${dog.age} Year${dog.age > 1 ? "s" : ""}`
+                  : "Not specified"}
+              </Text>
+            </View>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>SIZE</Text>
+              <Text style={styles.infoValue}>
+                {dog.size || "Not specified"}
+              </Text>
+            </View>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>SEX</Text>
+              <Text style={styles.infoValue}>
+                {dog.sex || dog.gender || "Not specified"}
               </Text>
             </View>
           </View>
-        )}
 
-        {/* Activities Section */}
-        {dog.favoriteActivities && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Favorite Activities</Text>
-            <View style={styles.textCard}>
-              <Text style={styles.cardIcon}>🏃</Text>
-              <Text style={styles.cardText}>{dog.favoriteActivities}</Text>
+          {/* Location section */}
+          {dog.location && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>LOCATION</Text>
+              <Text style={styles.sectionValue}>{dog.location}</Text>
             </View>
-          </View>
-        )}
+          )}
 
-        {/* Medical Notes Section */}
-        {dog.medicalNotes && (
+          {/* Details section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Medical Notes</Text>
-            <View style={styles.textCard}>
-              <Text style={styles.cardIcon}>🏥</Text>
-              <Text style={styles.cardText}>{dog.medicalNotes}</Text>
-            </View>
+            <Text style={styles.sectionLabel}>DETAILS</Text>
+            <Text style={styles.sectionValue}>
+              {dog.medicalNotes ||
+                dog.specialNeeds ||
+                dog.favoriteActivities ||
+                "No additional details"}
+            </Text>
           </View>
-        )}
 
-        {/* Special Needs Section */}
-        {dog.specialNeeds && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Special Needs</Text>
-            <View style={styles.textCard}>
-              <Text style={styles.cardIcon}>⭐</Text>
-              <Text style={styles.cardText}>{dog.specialNeeds}</Text>
-            </View>
+          {/* Action Buttons */}
+          <View style={styles.actionSection}>
+            <TouchableOpacity
+              style={styles.friendsButton}
+              onPress={() => navigation.navigate("DogFriends", { dog })}
+            >
+              <Text style={styles.friendsButtonText}>View Friends</Text>
+            </TouchableOpacity>
           </View>
-        )}
-
-        {/* Action Buttons */}
-        <View style={styles.actionSection}>
-          <TouchableOpacity
-            style={styles.friendsButton}
-            onPress={() => navigation.navigate("DogFriends", { dog })}
-          >
-            <Text style={styles.friendsButtonText}>👥 View Friends</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.editButton}
-            onPress={() => navigation.navigate("EditDog", { dog })}
-          >
-            <Text style={styles.editButtonText}>✏️ Edit Profile</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.bottomPadding} />
@@ -137,177 +123,142 @@ export default function DogProfileScreen({ route, navigation }) {
         title={alertState.title}
         message={alertState.message}
         type={alertState.type}
-        onClose={() => {
-          hideAlert();
-          // Navigate back on success
-          if (alertState.type === "success") {
-            navigation.navigate("Dashboard");
-          }
-        }}
+        onClose={hideAlert}
         confirmText={alertState.confirmText}
       />
-    </SafeAreaView>
+
+      <BottomNavigation navigation={navigation} activeRoute="Dashboard" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   scrollView: {
     flex: 1,
   },
-  header: {
-    backgroundColor: "#4A90E2",
-    padding: 30,
+  backButton: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 50 : 24,
+    left: 19,
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  backButtonText: {
+    fontSize: 24,
+    color: "#000000",
+  },
+  menuButton: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 55 : 29,
+    right: 21,
+    flexDirection: "column",
+    gap: 3,
     alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    zIndex: 10,
   },
-  dogProfilePhoto: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginBottom: 15,
+  menuDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#000000",
   },
-  dogEmoji: {
-    fontSize: 80,
-    marginBottom: 15,
+  header: {
+    height: 391,
+    backgroundColor: "#D9D9D9",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  imageContainer: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dogImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  contentSection: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    marginTop: -30,
+    paddingHorizontal: 41,
+    paddingTop: 20,
   },
   dogName: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#FFFFFF",
-    textAlign: "center",
-    marginBottom: 8,
-    textShadowColor: "rgba(0, 0, 0, 0.3)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
-  },
-  dogBreed: {
-    fontSize: 18,
-    color: "#E8F4FD",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  addedDate: {
-    fontSize: 14,
-    color: "#B8D4F0",
-    textAlign: "center",
-    fontStyle: "italic",
-  },
-  section: {
-    margin: 20,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 15,
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#000000",
+    marginBottom: 30,
+    textAlign: "left",
   },
   infoGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    marginBottom: 40,
   },
-  infoCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 12,
+  infoItem: {
     width: "48%",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: 20,
   },
-  infoHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  infoIcon: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  infoTitle: {
-    fontSize: 14,
+  infoLabel: {
+    fontSize: 11,
     fontWeight: "600",
-    color: "#666",
+    color: "rgba(0, 0, 0, 0.4)",
+    marginBottom: 8,
+    letterSpacing: 0.5,
   },
   infoValue: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#333",
+    fontSize: 15,
+    fontWeight: "400",
+    color: "#000000",
+    lineHeight: 20,
   },
-  textCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  section: {
+    marginBottom: 40,
   },
-  cardIcon: {
-    fontSize: 24,
-    marginBottom: 10,
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "rgba(0, 0, 0, 0.4)",
+    marginBottom: 8,
+    letterSpacing: 0.5,
   },
-  cardText: {
-    fontSize: 16,
-    color: "#333",
-    lineHeight: 24,
+  sectionValue: {
+    fontSize: 15,
+    fontWeight: "400",
+    color: "#000000",
+    lineHeight: 22,
   },
   actionSection: {
-    margin: 20,
-    gap: 15,
+    marginTop: 20,
+    marginBottom: 20,
   },
   friendsButton: {
-    backgroundColor: "#6C63FF",
-    borderRadius: 12,
-    padding: 18,
+    backgroundColor: "#9EC7AE",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     alignItems: "center",
-    shadowColor: "#6C63FF",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   friendsButtonText: {
     color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  editButton: {
-    backgroundColor: "#4A90E2",
-    borderRadius: 12,
-    padding: 18,
-    alignItems: "center",
-    shadowColor: "#4A90E2",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  editButtonText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "bold",
+    fontSize: 14,
+    fontWeight: "600",
   },
   bottomPadding: {
-    height: 20,
+    height: 100,
   },
 });

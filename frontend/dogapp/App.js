@@ -108,6 +108,7 @@ function AppNavigator() {
               component={AccountScreen}
               options={{
                 title: "👤 Account Settings",
+                headerShown: false,
               }}
             />
             <Stack.Screen
@@ -120,7 +121,7 @@ function AppNavigator() {
             <Stack.Screen
               name="DogProfile"
               component={DogProfileScreen}
-              options={{ title: "🐕 Dog Profile" }}
+              options={{ title: "🐕 Dog Profile", headerShown: false }}
             />
             <Stack.Screen
               name="EditDog"
@@ -147,7 +148,7 @@ function AppNavigator() {
               name="Notifications"
               component={NotificationsScreen}
               options={{
-                title: "🔔 Notifications",
+                headerShown: false,
               }}
             />
             <Stack.Screen

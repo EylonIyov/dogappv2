@@ -1569,8 +1569,6 @@ app.get("/api/notifications", authenticateToken, async (req, res) => {
 
     const notificationsSnapshot = await notificationsCollection
       .where("user_id", "==", req.user.userId)
-      .orderBy("created_at", "desc")
-      .limit(50)
       .get();
 
     const notifications = [];
@@ -1581,12 +1579,22 @@ app.get("/api/notifications", authenticateToken, async (req, res) => {
       });
     });
 
-    console.log(`✅ Found ${notifications.length} notifications`);
+    // Sort by created_at in JavaScript (newest first)
+    notifications.sort((a, b) => {
+      const aTime = a.created_at?.toDate?.() || new Date(0);
+      const bTime = b.created_at?.toDate?.() || new Date(0);
+      return bTime - aTime;
+    });
+
+    // Limit to 50 most recent
+    const limitedNotifications = notifications.slice(0, 50);
+
+    console.log(`✅ Found ${limitedNotifications.length} notifications`);
 
     res.json({
       success: true,
-      notifications,
-      count: notifications.length,
+      notifications: limitedNotifications,
+      count: limitedNotifications.length,
     });
   } catch (error) {
     console.error("❌ Error getting notifications:", error);
