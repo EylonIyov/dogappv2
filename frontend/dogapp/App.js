@@ -154,7 +154,7 @@ function AppNavigator() {
               name="DogFriends"
               component={DogFriendsScreen}
               options={{
-                title: "👥 Dog Friends",
+                headerShown: false,
               }}
             />
           </>

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import DogParkService from "../services/DogParkService";
 import DogService from "../services/DogService";
+import FriendService from "../services/FriendService";
 import CustomAlert, { DogImage } from "../components/CustomAlert";
 import { useAlerts } from "../components/useCustomAlert";
 import { useAuth } from "../contexts/AuthContext";
@@ -29,6 +30,7 @@ export default function DogParksScreen({ navigation, route }) {
   const [otherDogsAtPark, setOtherDogsAtPark] = useState([]);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [dogsToCheckIn, setDogsToCheckIn] = useState([]);
+  const [myDogsFriends, setMyDogsFriends] = useState({});
   const { alertState, hideAlert, showError, showSuccess, showInfo } =
     useAlerts();
 
@@ -65,6 +67,9 @@ export default function DogParksScreen({ navigation, route }) {
           "dogs found"
         );
         setMyDogs(result.dogs);
+
+        // Load friends for each dog
+        await loadFriendsForDogs(result.dogs);
       } else {
         console.error("❌ Failed to load dogs:", result.error);
       }
@@ -73,6 +78,35 @@ export default function DogParksScreen({ navigation, route }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadFriendsForDogs = async (dogs) => {
+    try {
+      const friendsData = {};
+
+      for (const dog of dogs) {
+        const result = await FriendService.getFriends(dog.id);
+        if (result.success) {
+          // Store array of friend IDs for this dog
+          friendsData[dog.id] = result.friends?.map((f) => f.id) || [];
+        }
+      }
+
+      setMyDogsFriends(friendsData);
+      console.log("✅ Friends loaded for all dogs:", friendsData);
+    } catch (error) {
+      console.error("Error loading friends:", error);
+    }
+  };
+
+  const isMyFriend = (otherDogId) => {
+    // Check if any of my dogs are friends with this other dog
+    for (const dogId in myDogsFriends) {
+      if (myDogsFriends[dogId].includes(otherDogId)) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const setupParkListener = (parkId) => {
@@ -386,29 +420,43 @@ export default function DogParksScreen({ navigation, route }) {
 
           {otherDogsAtPark.length > 0 ? (
             <View style={styles.dogsContainer}>
-              {otherDogsAtPark.map((dog) => (
-                <View key={dog.id} style={styles.dogCard}>
-                  <DogImage
-                    source={{ uri: dog.photo_url }}
-                    style={styles.dogAvatar}
-                    placeholder={dog.emoji || "🐕"}
-                  />
-                  <View style={styles.dogInfo}>
-                    <Text style={styles.dogName}>{dog.name}</Text>
-                    <Text style={styles.ownerName}>
-                      {dog.ownerName || "Max Smith"}
-                    </Text>
-                  </View>
-                  <View style={styles.actionButtons}>
-                    <View style={styles.checkedInBadge}>
-                      <Text style={styles.checkedInBadgeText}>Checked In</Text>
+              {otherDogsAtPark.map((dog) => {
+                const isFriend = isMyFriend(dog.id);
+
+                return (
+                  <View key={dog.id} style={styles.dogCard}>
+                    <DogImage
+                      source={{ uri: dog.photo_url }}
+                      style={styles.dogAvatar}
+                      placeholder={dog.emoji || "🐕"}
+                    />
+                    <View style={styles.dogInfo}>
+                      <Text style={styles.dogName}>{dog.name}</Text>
+                      <Text style={styles.ownerName}>
+                        {dog.ownerName || "Max Smith"}
+                      </Text>
                     </View>
-                    <TouchableOpacity style={styles.addFriendLink}>
-                      <Text style={styles.addFriendText}>Add to Friends</Text>
-                    </TouchableOpacity>
+                    <View style={styles.actionButtons}>
+                      <View style={styles.checkedInBadge}>
+                        <Text style={styles.checkedInBadgeText}>
+                          Checked In
+                        </Text>
+                      </View>
+                      {isFriend ? (
+                        <View style={styles.friendsBadge}>
+                          <Text style={styles.friendsBadgeText}>Friends</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity style={styles.addFriendLink}>
+                          <Text style={styles.addFriendText}>
+                            Add to Friends
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           ) : (
             <View style={styles.emptyState}>
@@ -606,6 +654,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   checkedInBadgeText: {
+    fontSize: 12,
+    color: "#FFFFFF",
+  },
+  friendsBadge: {
+    backgroundColor: "#4A90E2",
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    borderRadius: 4,
+    minWidth: 104,
+    alignItems: "center",
+  },
+  friendsBadgeText: {
     fontSize: 12,
     color: "#FFFFFF",
   },
