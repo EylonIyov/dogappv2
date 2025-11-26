@@ -8,141 +8,91 @@ import {
   SafeAreaView,
   ScrollView,
   StatusBar,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import CustomAlert from '../components/CustomAlert';
 import { useAlerts } from '../components/useCustomAlert';
 
 export default function SignupScreen({ navigation }) {
-  const [isSignupMode, setIsSignupMode] = useState(true); // Toggle between signup and login
   const [currentStep, setCurrentStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
   const [showVerifyPassword, setShowVerifyPassword] = useState(false);
-  
+
   // Form data
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [verifyPassword, setVerifyPassword] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
-  const { login, register } = useAuth();
+
+  const { register } = useAuth();
   const { alertState, hideAlert, showError, showSuccess } = useAlerts();
 
   const totalSteps = 3;
 
   const handleNext = () => {
-    // LOGIN MODE - Simple validation
-    if (!isSignupMode) {
-      handleLogin();
-      return;
-    }
-
-    // SIGNUP MODE - Validate current step
     if (currentStep === 1) {
-      if (!fullName.trim()) {
-        showError('Please enter your full name');
+      if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+        showError('Please fill in all fields');
         return;
       }
-      if (!email.trim()) {
-        showError('Please enter your email address');
-        return;
-      }
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
+      if (!email.includes('@')) {
         showError('Please enter a valid email address');
         return;
       }
-      if (!password.trim()) {
-        showError('Please create a password');
+      setCurrentStep(2);
+    } else if (currentStep === 2) {
+      if (!password.trim() || !verifyPassword.trim()) {
+        showError('Please fill in all fields');
         return;
       }
-      if (password.length < 6) {
-        showError('Password must be at least 6 characters long');
-        return;
-      }
-      if (!verifyPassword.trim()) {
-        showError('Please verify your password');
+      if (password.length < 8) {
+        showError('Password must be at least 8 characters long');
         return;
       }
       if (password !== verifyPassword) {
         showError('Passwords do not match');
         return;
       }
-    }
-
-    if (currentStep < totalSteps) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      handleSignup();
+      setCurrentStep(3);
     }
   };
 
   const handleBack = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
-    } else {
-      navigation.goBack();
-    }
-  };
-
-  const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      showError('Please enter both email and password');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const result = await login(email, password);
-      if (result.success) {
-        console.log('User logged in successfully');
-        // Navigation happens automatically via auth state change
-      } else {
-        showError(result.error || 'Login failed', 'Login Error');
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      showError('An unexpected error occurred. Please try again.', 'Error');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const handleSignup = async () => {
     if (!dateOfBirth.trim() || !gender.trim()) {
-      showError('Please fill in all required fields');
+      showError('Please fill in all fields');
       return;
     }
 
     setIsLoading(true);
     try {
+      const fullName = `${firstName} ${lastName}`;
       const result = await register(email, password, fullName, dateOfBirth, gender);
       if (result.success) {
-        showSuccess('Account created successfully! Welcome! 🐕', 'Success');
+        showSuccess('Account created successfully!', 'Success');
+        setTimeout(() => {
+          navigation.navigate('Home');
+        }, 1500);
       } else {
-        showError(result.error || 'Registration failed', 'Sign Up Error');
+        showError(result.error || 'Signup failed', 'Signup Error');
       }
     } catch (error) {
-      console.error('Registration error:', error);
+      console.error('Signup error:', error);
       showError('An unexpected error occurred. Please try again.', 'Error');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const toggleMode = () => {
-    setIsSignupMode(!isSignupMode);
-    setCurrentStep(1);
-    // Clear form when switching modes
-    setFullName('');
-    setEmail('');
-    setPassword('');
-    setVerifyPassword('');
-    setDateOfBirth('');
-    setGender('');
   };
 
   const renderProgressIndicator = () => (
@@ -159,11 +109,34 @@ export default function SignupScreen({ navigation }) {
     </View>
   );
 
-  const renderLoginForm = () => (
-    <View style={styles.formContainer}>
-      <Text style={styles.title}>Log In</Text>
+  const renderStep1 = () => (
+    <View style={styles.stepContainer}>
+      <Text style={styles.stepTitle}>Create your account</Text>
 
-      {/* Email Field */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>First Name</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter your first name"
+          placeholderTextColor="#999"
+          value={firstName}
+          onChangeText={setFirstName}
+          editable={!isLoading}
+        />
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Last Name</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter your last name"
+          placeholderTextColor="#999"
+          value={lastName}
+          onChangeText={setLastName}
+          editable={!isLoading}
+        />
+      </View>
+
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Email</Text>
         <TextInput
@@ -178,72 +151,19 @@ export default function SignupScreen({ navigation }) {
           editable={!isLoading}
         />
       </View>
-
-      {/* Password Field */}
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Password</Text>
-        <View style={styles.passwordContainer}>
-          <TextInput
-            style={[styles.input, styles.passwordInput]}
-            placeholder="Enter your password"
-            placeholderTextColor="#999"
-            secureTextEntry={!showPassword}
-            value={password}
-            onChangeText={setPassword}
-            editable={!isLoading}
-          />
-          <TouchableOpacity
-            style={styles.eyeIcon}
-            onPress={() => setShowPassword(!showPassword)}
-          >
-            <Text style={styles.eyeIconText}>{showPassword ? '👁️' : '👁️'}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
     </View>
   );
 
-  const renderStep1 = () => (
-    <View style={styles.formContainer}>
-      <Text style={styles.title}>Account Setup</Text>
+  const renderStep2 = () => (
+    <View style={styles.stepContainer}>
+      <Text style={styles.stepTitle}>Set your password</Text>
 
-      {/* Name Field */}
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Name</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="What's your full name"
-          placeholderTextColor="#999"
-          value={fullName}
-          onChangeText={setFullName}
-          autoCapitalize="words"
-          editable={!isLoading}
-        />
-      </View>
-
-      {/* Email Field */}
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="What's your email address"
-          placeholderTextColor="#999"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!isLoading}
-        />
-      </View>
-
-      {/* Password Field */}
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Password</Text>
         <View style={styles.passwordContainer}>
           <TextInput
             style={[styles.input, styles.passwordInput]}
-            placeholder="Create a password for your account"
+            placeholder="Enter a password (min 8 chars)"
             placeholderTextColor="#999"
             secureTextEntry={!showPassword}
             value={password}
@@ -259,7 +179,6 @@ export default function SignupScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Verify Password Field */}
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Verify Password</Text>
         <View style={styles.passwordContainer}>
@@ -283,16 +202,15 @@ export default function SignupScreen({ navigation }) {
     </View>
   );
 
-  const renderStep2 = () => (
-    <View style={styles.formContainer}>
-      <Text style={styles.title}>Additional Information</Text>
+  const renderStep3 = () => (
+    <View style={styles.stepContainer}>
+      <Text style={styles.stepTitle}>Personal details</Text>
 
-      {/* Date of Birth Field */}
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Date of Birth</Text>
         <TextInput
           style={styles.input}
-          placeholder="YYYY-MM-DD"
+          placeholder="MM/DD/YYYY"
           placeholderTextColor="#999"
           value={dateOfBirth}
           onChangeText={setDateOfBirth}
@@ -300,128 +218,90 @@ export default function SignupScreen({ navigation }) {
         />
       </View>
 
-      {/* Gender Field */}
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Gender</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Male/Female/Other"
-          placeholderTextColor="#999"
-          value={gender}
-          onChangeText={setGender}
-          editable={!isLoading}
-        />
-      </View>
-    </View>
-  );
-
-  const renderStep3 = () => (
-    <View style={styles.formContainer}>
-      <Text style={styles.title}>Review Information</Text>
-      
-      <View style={styles.reviewContainer}>
-        <View style={styles.reviewItem}>
-          <Text style={styles.reviewLabel}>Name:</Text>
-          <Text style={styles.reviewValue}>{fullName}</Text>
-        </View>
-        
-        <View style={styles.reviewItem}>
-          <Text style={styles.reviewLabel}>Email:</Text>
-          <Text style={styles.reviewValue}>{email}</Text>
-        </View>
-        
-        <View style={styles.reviewItem}>
-          <Text style={styles.reviewLabel}>Date of Birth:</Text>
-          <Text style={styles.reviewValue}>{dateOfBirth}</Text>
-        </View>
-        
-        <View style={styles.reviewItem}>
-          <Text style={styles.reviewLabel}>Gender:</Text>
-          <Text style={styles.reviewValue}>{gender}</Text>
+        <View style={styles.genderContainer}>
+          {['Male', 'Female', 'Other'].map((option) => (
+            <TouchableOpacity
+              key={option}
+              style={[
+                styles.genderButton,
+                gender === option && styles.genderButtonSelected,
+              ]}
+              onPress={() => setGender(option)}
+              disabled={isLoading}
+            >
+              <Text
+                style={[
+                  styles.genderButtonText,
+                  gender === option && styles.genderButtonTextSelected,
+                ]}
+              >
+                {option}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
-
-      <Text style={styles.reviewNote}>
-        Please review your information before completing signup
-      </Text>
     </View>
   );
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
-      {/* Progress Indicator */}
-      {isSignupMode && renderProgressIndicator()}
-
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoid}
       >
-        {/* Render current step */}
-        {isSignupMode ? (
-          <>
-            {currentStep === 1 && renderStep1()}
-            {currentStep === 2 && renderStep2()}
-            {currentStep === 3 && renderStep3()}
-          </>
-        ) : (
-          renderLoginForm()
-        )}
+        {renderProgressIndicator()}
 
-        {/* Navigation Buttons */}
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          {currentStep === 1 && renderStep1()}
+          {currentStep === 2 && renderStep2()}
+          {currentStep === 3 && renderStep3()}
+        </ScrollView>
+
         <View style={styles.navigationContainer}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBack}
-            disabled={isLoading}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.backButtonText}>Back</Text>
-          </TouchableOpacity>
+          {currentStep > 1 && (
+            <TouchableOpacity
+              style={[styles.backButton, isLoading && styles.disabledButton]}
+              onPress={handleBack}
+              disabled={isLoading}
+            >
+              <Text style={styles.backButtonText}>Back</Text>
+            </TouchableOpacity>
+          )}
 
-          <TouchableOpacity
-            style={[styles.nextButton, isLoading && styles.disabledButton]}
-            onPress={handleNext}
-            disabled={isLoading}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.nextButtonText}>
-              {isLoading ? 'Please wait...' : isSignupMode && currentStep === totalSteps ? 'Finish' : 'Next'}
-            </Text>
-          </TouchableOpacity>
+          {currentStep < totalSteps && (
+            <TouchableOpacity
+              style={[styles.nextButton, isLoading && styles.disabledButton]}
+              onPress={handleNext}
+              disabled={isLoading}
+            >
+              <Text style={styles.nextButtonText}>Next</Text>
+            </TouchableOpacity>
+          )}
+
+          {currentStep === totalSteps && (
+            <TouchableOpacity
+              style={[styles.signupButton, isLoading && styles.disabledButton]}
+              onPress={handleSignup}
+              disabled={isLoading}
+            >
+              <Text style={styles.signupButtonText}>
+                {isLoading ? 'Creating Account...' : 'Sign Up'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Forgot Password Button - Only show in login mode */}
-        {!isSignupMode && (
-          <View style={styles.forgotPasswordButtonContainer}>
-            <TouchableOpacity
-              style={styles.forgotPasswordButton}
-              onPress={() => showError('Password reset feature coming soon!')}
-              disabled={isLoading}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.forgotPasswordButtonText}>Forgot Password?</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Sign In Link - Fixed at bottom */}
-      <View style={styles.signInContainer}>
-        <Text style={styles.signInText}>
-          {isSignupMode ? 'Already have an account? ' : "Don't have an account? "}
-        </Text>
-        <TouchableOpacity 
-          onPress={toggleMode}
-          disabled={isLoading}
-        >
-          <Text style={styles.signInLink}>
-            {isSignupMode ? 'Sign in here' : 'Sign up here'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.loginPrompt}>
+          <Text style={styles.loginText}>Already have an account?</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+            <Text style={styles.loginLink}>Log In</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
 
       <CustomAlert
         visible={alertState.visible}
@@ -438,16 +318,19 @@ export default function SignupScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F5F5F0',
+  },
+  keyboardAvoid: {
+    flex: 1,
   },
   progressContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 10,
-    paddingHorizontal: 80,
-    gap: 12,
+    paddingTop: 18,
+    paddingBottom: 12,
+    paddingHorizontal: 60,
+    gap: 10,
   },
   progressBar: {
     flex: 1,
@@ -465,32 +348,32 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 40,
+    paddingBottom: 20,
   },
-  formContainer: {
-    paddingHorizontal: 30,
-    paddingTop: 40,
+  stepContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
+  stepTitle: {
+    fontSize: 26,
+    fontWeight: '700',
     color: '#6B6B6B',
-    marginBottom: 40,
+    marginBottom: 24,
   },
   inputGroup: {
-    marginBottom: 32,
+    marginBottom: 18,
   },
   label: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#1A1A1A',
-    marginBottom: 12,
+    color: '#333',
+    marginBottom: 8,
   },
   input: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#fff',
     borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     fontSize: 16,
     color: '#1A1A1A',
     borderWidth: 1,
@@ -504,134 +387,115 @@ const styles = StyleSheet.create({
   },
   eyeIcon: {
     position: 'absolute',
-    right: 15,
+    right: 12,
     top: 12,
-    padding: 5,
+    padding: 6,
   },
   eyeIconText: {
-    fontSize: 20,
+    fontSize: 18,
   },
-  reviewContainer: {
-    backgroundColor: '#FFFFFF',
+  genderContainer: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  genderButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#fff',
+    alignItems: 'center',
   },
-  reviewItem: {
-    marginBottom: 16,
+  genderButtonSelected: {
+    backgroundColor: '#00BFFF',
+    borderColor: '#00BFFF',
   },
-  reviewLabel: {
+  genderButtonText: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
+    fontWeight: '600',
+    color: '#333',
   },
-  reviewValue: {
-    fontSize: 16,
-    color: '#1A1A1A',
-    fontWeight: '500',
-  },
-  reviewNote: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    fontStyle: 'italic',
+  genderButtonTextSelected: {
+    color: '#fff',
   },
   navigationContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 30,
-    marginTop: 60,
-    gap: 16,
+    paddingHorizontal: 20,
+    gap: 12,
+    marginBottom: 12,
   },
   backButton: {
     flex: 1,
     backgroundColor: '#D3D3D3',
     borderRadius: 12,
-    paddingVertical: 18,
+    paddingVertical: 14,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
   backButtonText: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#1A1A1A',
   },
   nextButton: {
     flex: 1,
-    backgroundColor: '#D3D3D3',
+    backgroundColor: '#00BFFF',
     borderRadius: 12,
-    paddingVertical: 18,
+    paddingVertical: 14,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
   nextButtonText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1A1A1A',
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  signInContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
-    backgroundColor: '#F5F5F5',
-  },
-  signInText: {
     fontSize: 16,
-    color: '#1A1A1A',
+    fontWeight: '700',
+    color: '#fff',
   },
-  signInLink: {
-    fontSize: 16,
-    color: '#007BFF',
-    fontWeight: '600',
-  },
-  forgotPasswordContainer: {
-    alignItems: 'flex-end',
-    marginTop: 10,
-  },
-  forgotPasswordText: {
-    fontSize: 14,
-    color: '#007BFF',
-  },
-  forgotPasswordButtonContainer: {
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  forgotPasswordButton: {
-    backgroundColor: '#D3D3D3',
+  signupButton: {
+    flex: 1,
+    backgroundColor: '#00BFFF',
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 14,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  forgotPasswordButtonText: {
+  signupButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    fontWeight: '700',
+    color: '#fff',
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+  loginPrompt: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  loginText: {
+    fontSize: 15,
+    color: '#6B6B6B',
+  },
+  loginLink: {
+    fontSize: 15,
+    color: '#007BFF',
+    fontWeight: '700',
   },
 });

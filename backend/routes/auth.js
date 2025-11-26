@@ -20,6 +20,8 @@ router.post('/register', async (req, res) => {
       preferences 
     } = req.body;
 
+    console.log("Email received:", email, typeof email);
+
     // Validation - required fields
     if (!email || !password || !fullName || !dateOfBirth || !gender) {
       return res.status(400).json({ 
