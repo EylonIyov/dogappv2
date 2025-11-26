@@ -103,3 +103,4 @@ yarn-error.*
 frontend/dogapp/firebase.js
 
 app.json
+frontend/dogapp/structure.txt

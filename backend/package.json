@@ -5,7 +5,7 @@
   "main": "api/index.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "NODE_ENV=development npm start",
+    "dev": "cross-env NODE_ENV=development npm start",
     "dev:debug": "DEBUG=* nodemon server.js",
     "dev:watch": "nodemon --watch . --ext js --exec node server.js",
     "local": "NODE_ENV=development nodemon server.js",
@@ -20,6 +20,7 @@
     "@aws-sdk/s3-request-presigner": "^3.842.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "cross-env": "^10.1.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "firebase": "^11.10.0",
